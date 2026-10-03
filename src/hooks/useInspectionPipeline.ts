@@ -368,7 +368,7 @@ export function useInspectionPipeline({
       );
 
       // Never allow an exception to leave the pipeline permanently locked.
-      setState('INSPECTION_ERROR');
+      setState('SYSTEM_ERROR');
       soundService.playFailBuzzer();
 
       try {
