@@ -65,13 +65,7 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({ metrics }) =
     },
   ];
 
-  const totalCycleMs =
-    (metrics.partDetectionMs || 42) +
-    (metrics.stabilizationMs || 500) +
-    (metrics.alignmentMs || 16) +
-    (metrics.roiDetectionMs || 54) +
-    (metrics.ruleValidationMs || 3) +
-    14;
+  const totalCycleMs = metrics.totalCycleMs || 0;
 
   const criteria: Array<{ title: string; status: 'IMPLEMENTED' | 'VALIDATION_REQUIRED' | 'HARDWARE_REQUIRED' }> = [
     { title: 'Zero-touch camera presence and stabilization pipeline', status: 'IMPLEMENTED' },
