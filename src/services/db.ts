@@ -117,7 +117,7 @@ class DatabaseService {
     });
   }
 
-  public async getRecentInspections(limit = 100): Promise<InspectionRecord[]> {
+  public async getRecentInspections(limit = 500): Promise<InspectionRecord[]> {
     const db = await this.getDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('inspections', 'readonly');
@@ -146,7 +146,7 @@ class DatabaseService {
     search?: string;
     limit?: number;
   }): Promise<InspectionRecord[]> {
-    const all = await this.getRecentInspections(filters.limit || 200);
+    const all = await this.getRecentInspections(filters.limit || 1000);
     return all.filter((item) => {
       if (filters.productId && item.productId !== filters.productId) return false;
       if (filters.judgement && filters.judgement !== 'ALL' && item.judgement !== filters.judgement) return false;
