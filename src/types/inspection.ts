@@ -90,6 +90,7 @@ export interface SystemMetrics {
   roiDetectionMs: number;
   ruleValidationMs: number;
   dbSaveMs: number;
+  plcHandshakeMs?: number;
   totalCycleMs: number;
   frameResolution: {
     width: number;
