@@ -23,6 +23,7 @@ const DEFAULT_CONFIG: PLCConfiguration = {
   protocol: 'SIMULATION',
   ipAddress: '192.168.1.100',
   port: 502,
+  gatewayBaseUrl: '/api/plc',
   reconnectIntervalMs: 3000,
   connectionTimeoutMs: 2500,
   heartbeatIntervalMs: 500,
@@ -178,6 +179,7 @@ class PLCService {
 
   public async connect(): Promise<boolean> {
     this.handshakeState.connectionStatus = 'CONNECTING';
+    this.handshakeState.lastErrorMessage = undefined;
     this.notify();
 
     const ok = await this.adapter.connect(this.config);
@@ -190,6 +192,9 @@ class PLCService {
     } else {
       this.handshakeState.connectionStatus = 'DISCONNECTED';
       this.handshakeState.interlockState = 'COMMUNICATION_FAULT';
+      this.handshakeState.heartbeatHealthy = false;
+      this.currentSignals.processPermit = false;
+      this.handshakeState.lastErrorMessage = `Unable to connect to ${this.config.protocol}`;
     }
     this.notify();
     return ok;
@@ -260,8 +265,12 @@ class PLCService {
           }
         }
         this.notify();
-      } catch {
-        // Comm issue
+      } catch (error) {
+        this.handshakeState.commErrorCount++;
+        this.handshakeState.heartbeatHealthy = false;
+        this.handshakeState.interlockState = 'COMMUNICATION_FAULT';
+        this.currentSignals.processPermit = false;
+        this.handshakeState.lastErrorMessage = error instanceof Error ? error.message : 'PLC signal read failed';
       }
     }, 50);
   }
