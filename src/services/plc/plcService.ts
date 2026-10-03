@@ -232,6 +232,7 @@ class PLCService {
         // Watchdog timeout check
         if (Date.now() - this.handshakeState.lastHeartbeatAckTime > this.config.heartbeatTimeoutMs) {
           this.handshakeState.heartbeatHealthy = false;
+          this.handshakeState.lastErrorMessage = 'PLC heartbeat timeout';
           this.handshakeState.interlockState = 'COMMUNICATION_FAULT';
           this.currentSignals.processPermit = false;
           this.notify();
@@ -349,6 +350,7 @@ class PLCService {
     if (!sendOk) {
       this.handshakeState.interlockState = 'COMMUNICATION_FAULT';
       this.handshakeState.ackPending = false;
+      this.handshakeState.lastErrorMessage = 'Failed to transmit inspection result to PLC';
       this.logTimelineEvent('COMM_FAILURE', 'INTERLOCK', 'Failed to transmit result to PLC');
       this.notify();
       return { interlockGranted: false, ackReceived: false, commLatencyMs: 0 };
@@ -364,6 +366,7 @@ class PLCService {
     if (!ackOk) {
       // Timeout waiting for PLC ACK!
       this.handshakeState.interlockState = 'COMMUNICATION_FAULT';
+      this.handshakeState.lastErrorMessage = `PLC ACK timeout after ${this.config.ackTimeoutMs}ms`;
       this.logTimelineEvent('PLC_ACK_TIMEOUT', 'INTERLOCK', `PLC failed to ACK within ${this.config.ackTimeoutMs}ms`);
       this.notify();
       return { interlockGranted: false, ackReceived: false, commLatencyMs };
