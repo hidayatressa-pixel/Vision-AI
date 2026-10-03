@@ -126,7 +126,7 @@ export const StatusDisplay: React.FC<StatusDisplayProps> = ({
   }
 
   // 3. Alignment or System Error
-  if (state === 'ALIGNMENT_ERROR' || (state === 'WAITING_PART_REMOVAL' && currentResult?.judgement === 'ERROR')) {
+  if (state === 'ALIGNMENT_ERROR' || state === 'SYSTEM_ERROR' || (state === 'WAITING_PART_REMOVAL' && currentResult?.judgement === 'ERROR')) {
     return (
       <div className="bg-amber-950 border border-amber-500 rounded-xl p-5 text-white shadow-lg">
         <div className="flex items-center gap-4">
@@ -136,14 +136,14 @@ export const StatusDisplay: React.FC<StatusDisplayProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-2xl sm:text-3xl font-black text-amber-300">
-                ALIGNMENT / SYSTEM ERROR
+                SYSTEM / ALIGNMENT FAULT
               </span>
               <span className="text-xs font-mono px-2 py-0.5 rounded bg-amber-900 border border-amber-700 text-amber-200">
-                Not a Product Defect
+                PROCESS BLOCKED
               </span>
             </div>
             <p className="text-sm sm:text-base text-amber-100 mt-1 font-mono">
-              {currentResult?.primaryReason || 'Reference fiducials not found or obstructed. Check stand position.'}
+              {currentResult?.primaryReason || (state === 'ALIGNMENT_ERROR' ? 'Reference anchors not found or obstructed. Check stand position.' : 'Inspection system fault. Check diagnostics before resuming.')}
             </p>
           </div>
         </div>
