@@ -289,7 +289,7 @@ export function useInspectionPipeline({
         ruleValidationMs: Math.round(ruleTime),
         dbSaveMs: 0,
         plcHandshakeMs: plcHandshakeResult.commLatencyMs,
-        totalCycleMs,
+        totalCycleMs: totalCycleMs + plcHandshakeResult.commLatencyMs,
         frameResolution: {
           width: frameData.width,
           height: frameData.height,
