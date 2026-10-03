@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { soundService } from '../services/audio';
 import { dbService } from '../services/db';
 import { plcService } from '../services/plc/plcService';
+import { getRuntimeIdentity } from '../services/runtimeConfig';
 import {
   AlignmentResult,
   ExtraDetectedObject,
@@ -236,10 +237,19 @@ export function useInspectionPipeline({
       const totalInspectionMs = Math.round(performance.now() - cycleStart);
       const totalCycleMs = Math.round(partDetectTime + stabTime + totalInspectionMs);
 
-      // 5. Send Inspection Result to PLC with Handshake & Watchdog (Sections 33-41)
-      // Explicitly separate Product NG from Vision System Error
-      const isProductNg = evaluation.judgement === 'NG';
-      const isSystemError = evaluation.judgement === 'ERROR';
+      // 5. Enforce a hard inspection-time budget before touching the machine interlock.
+      // A slow/overloaded vision cycle is a system error, never an implicit OK.
+      let resultJudgement: 'OK' | 'NG' | 'ERROR' = evaluation.judgement;
+      let resultReason = evaluation.primaryReason;
+      if (totalInspectionMs > plcService.getConfig().maxInspectionTimeoutMs) {
+        resultJudgement = 'ERROR';
+        resultReason = 'Inspection timeout: ' + totalInspectionMs + ' ms exceeded configured limit';
+        plcService.logTimelineEvent('INSPECTION_TIMEOUT', 'INTERLOCK', resultReason);
+      }
+
+      // Explicitly separate Product NG from Vision System Error.
+      const isProductNg = resultJudgement === 'NG';
+      const isSystemError = resultJudgement === 'ERROR';
 
       const inspectionId = `INSP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       const plcSequenceNumber = plcService.getHandshakeState().lastSequenceNumber;
@@ -249,15 +259,25 @@ export function useInspectionPipeline({
         timestamp: new Date().toISOString(),
         productCode: master.productCode,
         revisionCode: revision.revisionCode,
-        judgement: evaluation.judgement,
+        judgement: resultJudgement,
         isProductNg,
         isSystemError,
-        failureReason: evaluation.primaryReason,
+        failureReason: resultReason,
         detectedCount: evaluation.detectedCount,
         expectedCount: evaluation.expectedCount,
         alignmentOk: alignment.success,
         cycleTimeMs: totalCycleMs,
       });
+
+      // A missing PLC ACK is a system fault. Never report the product as OK when
+      // the machine-side handshake could not be confirmed.
+      if (!plcHandshakeResult.ackReceived) {
+        resultJudgement = 'ERROR';
+        resultReason = 'PLC result ACK was not received; process remains blocked';
+        plcService.logTimelineEvent('HANDSHAKE_FAILED', 'INTERLOCK', resultReason);
+      }
+
+      const identity = getRuntimeIdentity();
 
       // 6. Metrics collection
       const metrics: SystemMetrics = {
@@ -284,18 +304,18 @@ export function useInspectionPipeline({
         masterId: master.id,
         masterRevisionId: revision.id,
         masterRevisionCode: revision.revisionCode,
-        judgement: evaluation.judgement,
+        judgement: resultJudgement,
         expectedCount: evaluation.expectedCount,
         detectedCount: evaluation.detectedCount,
         defects: evaluation.defects,
-        primaryReason: evaluation.primaryReason,
+        primaryReason: resultReason,
         metrics,
         alignment,
         roiResults,
         extraObjects,
         thumbnailBase64,
-        deviceId: 'STAND-CAM-01',
-        operatorId: 'OP-STATION-4',
+        deviceId: identity.stationId,
+        operatorId: identity.operatorId,
         syncedToCloud: false,
         sequenceNumber: plcSequenceNumber,
         plcInterlockState: plcService.getHandshakeState().interlockState,
@@ -306,10 +326,10 @@ export function useInspectionPipeline({
       setCurrentResult(record);
 
       // 7. Audio Feedback and State Display
-      if (evaluation.judgement === 'OK') {
+      if (resultJudgement === 'OK') {
         setState('JUDGEMENT_OK');
         soundService.playPassChime();
-      } else if (evaluation.judgement === 'NG') {
+      } else if (resultJudgement === 'NG') {
         setState('JUDGEMENT_NG');
         soundService.playFailBuzzer();
       } else {
