@@ -112,7 +112,7 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({ metrics }) =
 
           <div className="space-y-3">
             {steps.map((s, idx) => {
-              const pct = Math.max(2, Math.round((s.time / totalCycleMs) * 100));
+              const pct = Math.max(2, Math.round((s.time / Math.max(1, totalCycleMs)) * 100));
 
               return (
                 <div key={idx} className="bg-slate-950 p-3 rounded-xl border border-slate-800">
