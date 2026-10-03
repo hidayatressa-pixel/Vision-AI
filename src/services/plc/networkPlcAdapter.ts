@@ -1,151 +1,148 @@
-/**
- * Industrial Network PLC Adapter
- * Connects to physical PLCs (Modbus TCP, OPC UA, EtherNet/IP, Siemens S7)
- * via industrial edge gateways, REST/WebSocket industrial bridges, or direct interfaces.
- */
-
 import { PLCConfiguration, PLCInspectionPayload, PLCLiveSignals } from '../../types/plc';
 import { PLCAdapter } from './plcAdapter';
 
+/**
+ * Physical PLC adapter through an industrial edge/gateway API.
+ * Browser code never fabricates PLC connectivity or ACKs. A production
+ * gateway must explicitly confirm every connection, read and write.
+ */
 export class NetworkPLCAdapter implements PLCAdapter {
   readonly protocol: string;
   private connected = false;
   private config: PLCConfiguration | null = null;
   private activeSignals: PLCLiveSignals = {
-    plcReady: true,
-    machineReady: true,
-    partPresent: false,
-    cycleActive: false,
-    ackResult: false,
-    resetRequest: false,
-    interlockReset: false,
-    heartbeatRequest: true,
-
-    visionReady: true,
-    visionBusy: false,
-    inspectionComplete: false,
-    inspectionOk: false,
-    inspectionNg: false,
-    inspectionError: false,
-    visionHeartbeat: false,
-    alignmentOk: false,
-    partValid: false,
-    processPermit: false,
+    plcReady: false, machineReady: false, partPresent: false, cycleActive: false,
+    ackResult: false, resetRequest: false, interlockReset: false, heartbeatRequest: false,
+    visionReady: false, visionBusy: false, inspectionComplete: false, inspectionOk: false,
+    inspectionNg: false, inspectionError: false, visionHeartbeat: false,
+    alignmentOk: false, partValid: false, processPermit: false,
   };
 
-  constructor(protocol: string) {
-    this.protocol = protocol;
+  constructor(protocol: string) { this.protocol = protocol; }
+  public get isConnected(): boolean { return this.connected; }
+
+  private baseUrl(): string {
+    return (this.config?.gatewayBaseUrl || '/api/plc').replace(/\/$/, '');
   }
 
-  public get isConnected(): boolean {
-    return this.connected;
+  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(this.baseUrl() + path, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+      signal: init?.signal || AbortSignal.timeout(this.config?.connectionTimeoutMs || 3000),
+    });
+    if (!response.ok) throw new Error('PLC gateway HTTP ' + response.status);
+    return response.json() as Promise<T>;
   }
 
   public async connect(config: PLCConfiguration): Promise<boolean> {
     this.config = config;
     try {
-      // In production, connect to the edge gateway or bridge endpoint
-      // e.g. ws://${config.ipAddress}:${config.port}/plc
-      const test = await this.testConnection(config);
-      this.connected = test.success;
-      return test.success;
+      const result = await this.request<{ ok: boolean; signals?: PLCLiveSignals; message?: string }>('/connect', {
+        method: 'POST',
+        body: JSON.stringify({
+          protocol: config.protocol, ipAddress: config.ipAddress, port: config.port,
+          rack: config.rack, slot: config.slot, stationId: config.stationId, tags: config.tags,
+        }),
+      });
+      if (!result.ok) throw new Error(result.message || 'PLC gateway rejected connection');
+      this.connected = true;
+      if (result.signals) this.activeSignals = { ...this.activeSignals, ...result.signals };
+      return true;
     } catch {
       this.connected = false;
+      this.activeSignals.processPermit = false;
       return false;
     }
   }
 
   public async disconnect(): Promise<void> {
+    if (this.connected) {
+      try { await this.request('/disconnect', { method: 'POST', body: JSON.stringify({}) }); } catch {}
+    }
     this.connected = false;
     this.activeSignals.processPermit = false;
   }
 
   public async testConnection(config: PLCConfiguration): Promise<{ success: boolean; latencyMs: number; message: string }> {
     const start = performance.now();
-
-    // Ping check / handshake test
     try {
-      const response = await fetch(`/api/plc/ping?ip=${config.ipAddress}&port=${config.port}&protocol=${this.protocol}`, {
-        method: 'GET',
+      const response = await fetch((config.gatewayBaseUrl || '/api/plc').replace(/\/$/, '') + '/ping', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          protocol: config.protocol, ipAddress: config.ipAddress, port: config.port,
+          rack: config.rack, slot: config.slot, stationId: config.stationId,
+        }),
         signal: AbortSignal.timeout(config.connectionTimeoutMs || 3000),
-      }).catch(() => null);
-
-      const latency = Math.round(performance.now() - start);
-
-      if (response && response.ok) {
-        return { success: true, latencyMs: latency, message: `Connected to ${this.protocol} at ${config.ipAddress}:${config.port}` };
-      }
-
-      // If backend bridge is local or in simulation fallback:
+      });
+      const latencyMs = Math.round(performance.now() - start);
+      if (!response.ok) return { success: false, latencyMs, message: 'PLC gateway returned HTTP ' + response.status };
+      const result = await response.json() as { ok?: boolean; message?: string };
       return {
-        success: true,
-        latencyMs: Math.max(12, latency),
-        message: `${this.protocol} Gateway reachable at ${config.ipAddress}:${config.port}`,
+        success: result.ok === true,
+        latencyMs,
+        message: result.message || (result.ok ? 'PLC gateway reachable' : 'PLC gateway rejected connection'),
       };
-    } catch {
-      return {
-        success: false,
-        latencyMs: 0,
-        message: `Connection timeout to ${config.ipAddress}:${config.port}`,
-      };
+    } catch (error) {
+      return { success: false, latencyMs: Math.round(performance.now() - start), message: error instanceof Error ? error.message : 'PLC gateway unreachable' };
     }
   }
 
   public async readSignals(): Promise<PLCLiveSignals> {
     if (!this.connected) throw new Error('PLC disconnected');
+    const result = await this.request<{ signals: PLCLiveSignals }>('/signals');
+    this.activeSignals = { ...this.activeSignals, ...result.signals };
     return { ...this.activeSignals };
   }
 
   public async writeSignals(updates: Partial<PLCLiveSignals>): Promise<boolean> {
     if (!this.connected) return false;
-    Object.assign(this.activeSignals, updates);
-    return true;
+    try {
+      await this.request('/signals', { method: 'POST', body: JSON.stringify({ updates }) });
+      Object.assign(this.activeSignals, updates);
+      return true;
+    } catch { return false; }
   }
 
   public async sendHeartbeat(beat: boolean): Promise<boolean> {
-    this.activeSignals.visionHeartbeat = beat;
-    return this.connected;
+    if (!this.connected) return false;
+    try {
+      const result = await this.request<{ ok: boolean }>('/heartbeat', {
+        method: 'POST', body: JSON.stringify({ beat }),
+      });
+      if (result.ok) this.activeSignals.visionHeartbeat = beat;
+      return result.ok;
+    } catch { return false; }
   }
 
   public async sendInspectionResult(payload: PLCInspectionPayload): Promise<boolean> {
     if (!this.connected) return false;
-
-    this.activeSignals.inspectionComplete = true;
-    this.activeSignals.alignmentOk = payload.alignmentOk;
-
-    if (payload.judgement === 'OK') {
-      this.activeSignals.inspectionOk = true;
-      this.activeSignals.inspectionNg = false;
-      this.activeSignals.inspectionError = false;
-    } else if (payload.judgement === 'NG') {
-      this.activeSignals.inspectionOk = false;
-      this.activeSignals.inspectionNg = true;
-      this.activeSignals.inspectionError = false;
-    } else {
-      this.activeSignals.inspectionOk = false;
-      this.activeSignals.inspectionNg = false;
-      this.activeSignals.inspectionError = true;
-    }
-
-    // Await ACK in real loop
-    return true;
+    try {
+      const result = await this.request<{ ok: boolean; signals?: PLCLiveSignals }>('/inspection-result', {
+        method: 'POST', body: JSON.stringify(payload),
+      });
+      if (!result.ok) return false;
+      if (result.signals) this.activeSignals = { ...this.activeSignals, ...result.signals };
+      return true;
+    } catch { return false; }
   }
 
   public async waitForAck(timeoutMs: number): Promise<boolean> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      if (this.activeSignals.ackResult) {
-        return true;
-      }
-      await new Promise((r) => setTimeout(r, 15));
+    if (!this.connected) return false;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        if (await this.readAck()) return true;
+      } catch { return false; }
+      await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    // Auto-ack for gateway if enabled
-    this.activeSignals.ackResult = true;
-    return true;
+    return false;
   }
 
   public async clearResultSignals(): Promise<void> {
+    if (!this.connected) return;
+    try { await this.request('/result-clear', { method: 'POST', body: JSON.stringify({}) }); } catch {}
     this.activeSignals.inspectionComplete = false;
     this.activeSignals.inspectionOk = false;
     this.activeSignals.inspectionNg = false;
@@ -154,22 +151,22 @@ export class NetworkPLCAdapter implements PLCAdapter {
   }
 
   public async readMachineState(): Promise<{ plcReady: boolean; machineReady: boolean }> {
-    return {
-      plcReady: this.activeSignals.plcReady,
-      machineReady: this.activeSignals.machineReady,
-    };
+    const signals = await this.readSignals();
+    return { plcReady: signals.plcReady, machineReady: signals.machineReady };
   }
 
-  public async readPartTrigger(): Promise<boolean> {
-    return this.activeSignals.partPresent;
-  }
-
-  public async readAck(): Promise<boolean> {
-    return this.activeSignals.ackResult;
-  }
+  public async readPartTrigger(): Promise<boolean> { return (await this.readSignals()).partPresent; }
+  public async readAck(): Promise<boolean> { return (await this.readSignals()).ackResult; }
 
   public async resetInterlock(): Promise<boolean> {
-    this.activeSignals.processPermit = false;
-    return true;
+    if (!this.connected) return false;
+    try {
+      const result = await this.request<{ ok: boolean }>('/interlock-reset', { method: 'POST', body: JSON.stringify({}) });
+      this.activeSignals.processPermit = false;
+      return result.ok;
+    } catch {
+      this.activeSignals.processPermit = false;
+      return false;
+    }
   }
 }
