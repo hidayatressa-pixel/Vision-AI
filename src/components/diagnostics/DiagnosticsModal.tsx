@@ -52,7 +52,7 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({ metrics }) =
     {
       name: 'PLC Interlock Handshake',
       desc: 'Result assertion, PLC ACK & Process Permit',
-      time: 14,
+      time: metrics.plcHandshakeMs || 0,
       color: 'text-rose-400',
       bg: 'bg-rose-500',
     },
@@ -73,26 +73,20 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({ metrics }) =
     (metrics.ruleValidationMs || 3) +
     14;
 
-  const criteria = [
-    { title: 'Smartphone camera works from browser', status: true },
-    { title: 'Operator does not need to press inspection button (Zero-Touch)', status: true },
-    { title: 'Product automatically triggers inspection in detection zone', status: true },
-    { title: 'System waits 500 ms stabilization before capture', status: true },
-    { title: 'Small product/camera shifts compensated by Alignment Engine without false NG', status: true },
-    { title: 'Missing screw triggers deterministic NG with reason', status: true },
-    { title: 'Extra screw triggers deterministic NG with reason', status: true },
-    { title: 'System distinguishes Technical/Alignment Error from Product NG', status: true },
-    { title: 'Anti-double detection prevents re-inspecting same part', status: true },
-    { title: 'Results automatically saved to local database', status: true },
-    { title: 'Offline resilience with local synchronization queue', status: true },
-    { title: 'Master configuration versioned and editable by engineers', status: true },
-    { title: 'Inspection rules are explicit and explainable', status: true },
-    { title: 'PLC Integration: Modular adapter supporting Modbus, OPC UA, S7, and Simulation', status: true },
-    { title: 'PLC Handshake: Explicit ACK with configurable timeout protection', status: true },
-    { title: 'Fail-Safe Interlock: PLC blocks next process on NG or Vision/Comm Fault', status: true },
-    { title: 'Watchdog Heartbeat monitoring for browser/camera liveness', status: true },
-    { title: 'Dual Trigger Modes supported: Vision Auto-Camera, PLC Sensor, and Hybrid', status: true },
-    { title: 'Stale Result Prevention: previous OK never reused on new cycle', status: true },
+  const criteria: Array<{ title: string; status: 'IMPLEMENTED' | 'VALIDATION_REQUIRED' | 'HARDWARE_REQUIRED' }> = [
+    { title: 'Zero-touch camera presence and stabilization pipeline', status: 'IMPLEMENTED' },
+    { title: 'Alignment transform with confidence, scale and residual checks', status: 'IMPLEMENTED' },
+    { title: 'Deterministic OK / NG / ERROR classification', status: 'IMPLEMENTED' },
+    { title: 'Anti-double detection and part-removal gating', status: 'IMPLEMENTED' },
+    { title: 'Local IndexedDB persistence and durable sync queue', status: 'IMPLEMENTED' },
+    { title: 'Master configuration validation before save', status: 'IMPLEMENTED' },
+    { title: 'PLC ACK timeout and communication fail-safe', status: 'IMPLEMENTED' },
+    { title: 'Physical PLC protocol validation through an industrial gateway', status: 'HARDWARE_REQUIRED' },
+    { title: 'Vision detection accuracy against representative production dataset', status: 'VALIDATION_REQUIRED' },
+    { title: 'Camera/lighting calibration against production fixtures', status: 'VALIDATION_REQUIRED' },
+    { title: 'MES/SCADA cloud endpoint and authentication', status: 'HARDWARE_REQUIRED' },
+    { title: 'Station and operator identity configuration', status: 'IMPLEMENTED' },
+    { title: 'Production safety validation with controls/safety engineering', status: 'HARDWARE_REQUIRED' },
   ];
 
   return (
@@ -155,8 +149,9 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({ metrics }) =
         {/* System Acceptance Criteria Verification */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
           <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400">
-            Specification Acceptance Verification
+            Verification & Readiness
           </h3>
+          <p className="text-[10px] text-slate-500 font-mono">Implemented items are software-complete. Hardware and dataset items remain commissioning gates.</p>
 
           <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
             {criteria.map((c, idx) => (
@@ -164,8 +159,11 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({ metrics }) =
                 key={idx}
                 className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs font-mono text-slate-300"
               >
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>{c.title}</span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${c.status === 'IMPLEMENTED' ? 'bg-emerald-400' : c.status === 'VALIDATION_REQUIRED' ? 'bg-amber-400' : 'bg-red-400'}`} />
+                <span className="flex-1">{c.title}</span>
+                <span className={`text-[9px] font-bold whitespace-nowrap ${c.status === 'IMPLEMENTED' ? 'text-emerald-400' : c.status === 'VALIDATION_REQUIRED' ? 'text-amber-400' : 'text-red-400'}`}>
+                  {c.status === 'IMPLEMENTED' ? 'IMPLEMENTED' : c.status === 'VALIDATION_REQUIRED' ? 'VALIDATE' : 'HARDWARE'}
+                </span>
               </div>
             ))}
           </div>
