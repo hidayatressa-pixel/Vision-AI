@@ -17,6 +17,7 @@ import {
   Cable,
 } from 'lucide-react';
 import { MasterProduct, MasterRevision } from '../types/master';
+import { getRuntimeIdentity } from '../services/runtimeConfig';
 
 export type ActiveTab = 'INSPECTION' | 'MASTERS' | 'CAMERA_SETUP' | 'PLC_SETUP' | 'HISTORY' | 'DIAGNOSTICS';
 export type UserRole = 'OPERATOR' | 'ENGINEER';
@@ -46,6 +47,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   pendingSyncCount,
   onSync,
 }) => {
+  const identity = getRuntimeIdentity();
+
   return (
     <header className="rvi-topbar text-slate-100 select-none">
       <div className="rvi-topbar-inner max-w-[1500px] mx-auto px-3 sm:px-5 lg:px-6 flex items-center justify-between gap-4">
@@ -70,6 +73,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="font-mono text-slate-300">{activeRevision.revisionCode}</span>
                 <span className="text-slate-600">/</span>
                 <span>{activeRevision.expectedObjectCount} inspection points</span>
+                <span className="text-slate-600">/</span>
+                <span className="font-mono text-slate-500">{identity.stationId}</span>
               </div>
             ) : (
               <div className="text-[11px] text-amber-400">No active master</div>
