@@ -37,6 +37,7 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
   const [selectedId, setSelectedId] = useState<string>('');
   const [testResult, setTestResult] = useState<string | null>(null);
   const [selectedReferenceId, setSelectedReferenceId] = useState<string>('');
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDraggingRef = useRef<boolean>(false);
