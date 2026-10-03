@@ -376,7 +376,22 @@ class PLCService {
 
     // 3. Interlock Decision (Section 39)
     // Quality Interlock: Process permitted ONLY IF inspection is OK AND machine is ready
-    const { plcReady, machineReady } = await this.adapter.readMachineState();
+    let plcReady = false;
+    let machineReady = false;
+    try {
+      const machineState = await this.adapter.readMachineState();
+      plcReady = machineState.plcReady;
+      machineReady = machineState.machineReady;
+    } catch (error) {
+      this.handshakeState.interlockState = 'COMMUNICATION_FAULT';
+      this.handshakeState.lastErrorMessage =
+        error instanceof Error ? error.message : 'Failed to read PLC machine state';
+      this.currentSignals.processPermit = false;
+      this.logTimelineEvent('PLC_STATE_READ_FAILED', 'INTERLOCK', this.handshakeState.lastErrorMessage);
+      this.notify();
+      return { interlockGranted: false, ackReceived: ackOk, commLatencyMs };
+    }
+
     let interlockGranted = false;
 
     if (payload.judgement === 'OK' && plcReady && machineReady) {
