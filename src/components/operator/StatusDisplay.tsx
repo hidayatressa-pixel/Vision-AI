@@ -35,11 +35,11 @@ export const StatusDisplay: React.FC<StatusDisplayProps> = ({
                   PASS (OK)
                 </span>
                 <span className="text-xs font-mono uppercase px-2 py-0.5 rounded bg-emerald-900 border border-emerald-700 text-emerald-200">
-                  100% Quality
+                  Inspection Passed
                 </span>
               </div>
               <p className="text-base sm:text-lg font-medium text-emerald-100 mt-0.5">
-                {currentResult?.expectedCount || expectedCount} / {currentResult?.expectedCount || expectedCount} SCREWS PRESENT & ALIGNED
+                {currentResult?.expectedCount || expectedCount} / {currentResult?.expectedCount || expectedCount} INSPECTION POINTS PASS
               </p>
             </div>
           </div>
@@ -167,13 +167,13 @@ export const StatusDisplay: React.FC<StatusDisplayProps> = ({
               </div>
               <p className="text-xs sm:text-sm text-slate-300 font-mono mt-1">
                 {state === 'STABILIZING'
-                  ? `Settle delay: 500 ms (${pct}%) · Checking camera vibration & motion`
+                  ? `Settle delay: (${pct}%) · Checking camera vibration & motion`
                   : 'Aligning reference anchors & evaluating screw ROIs...'}
               </p>
             </div>
           </div>
           <div className="text-right font-mono text-cyan-400 font-bold text-xl sm:text-2xl">
-            {state === 'STABILIZING' ? `${pct}%` : 'AI/CV'}
+            {state === 'STABILIZING' ? `${pct}%` : 'VISION'}
           </div>
         </div>
 
@@ -207,7 +207,7 @@ export const StatusDisplay: React.FC<StatusDisplayProps> = ({
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-400 font-mono mt-0.5">
-              Place workpiece on stand within detection zone. Zero touch required.
+              Place workpiece in the detection zone. Inspection starts automatically.
             </p>
           </div>
         </div>
