@@ -1,0 +1,13 @@
+{
+  "productCode": "PRD-BRACKET-M4",
+  "revisionCode": "REV-01",
+  "type": "golden-reference-set",
+  "references": [
+    { "id": "ref-screw-1", "label": "Screw #1", "roiId": "roi-screw-1", "file": "screw-01.png" },
+    { "id": "ref-screw-2", "label": "Screw #2", "roiId": "roi-screw-2", "file": "screw-02.png" },
+    { "id": "ref-screw-3", "label": "Screw #3", "roiId": "roi-screw-3", "file": "screw-03.png" },
+    { "id": "ref-screw-4", "label": "Screw #4", "roiId": "roi-screw-4", "file": "screw-04.png" },
+    { "id": "ref-screw-5", "label": "Screw #5", "roiId": "roi-screw-5", "file": "screw-05.png" },
+    { "id": "ref-screw-6", "label": "Screw #6", "roiId": "roi-screw-6", "file": "screw-06.png" }
+  ]
+}
