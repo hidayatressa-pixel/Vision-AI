@@ -228,46 +228,62 @@ export class ROIInspector {
     tolerance: ToleranceConfig
   ): ExtraDetectedObject[] {
     const extra: ExtraDetectedObject[] = [];
-    const minScrewDistancePx = tolerance.maxPositionOffsetPx * 1.8;
+    const minScrewDistancePx = Math.max(12, tolerance.maxPositionOffsetPx * 1.8);
 
-    // Center of transformed bracket area
-    const cx = frame.width / 2 + alignment.translationX;
-    const cy = frame.height / 2 + alignment.translationY;
-    const searchSpanX = frame.width * 0.35;
-    const searchSpanY = frame.height * 0.35;
+    // Build the search area from the transformed master ROIs instead of assuming
+    // the workpiece is axis-aligned at the frame centre. This keeps extra-object
+    // detection consistent with the alignment transform.
+    const transformed = rois.map((roi) =>
+      alignmentEngine.transformMasterPoint(
+        { x: roi.x, y: roi.y },
+        frame.width,
+        frame.height,
+        alignment
+      )
+    );
 
-    const x0 = Math.max(30, Math.floor(cx - searchSpanX));
-    const y0 = Math.max(30, Math.floor(cy - searchSpanY));
-    const x1 = Math.min(frame.width - 30, Math.ceil(cx + searchSpanX));
-    const y1 = Math.min(frame.height - 30, Math.ceil(cy + searchSpanY));
+    if (transformed.length === 0) return extra;
 
-    // Coarse scan step
-    const step = 20;
+    const xs = transformed.map((p) => p.x);
+    const ys = transformed.map((p) => p.y);
+    const marginX = Math.max(40, frame.width * 0.06);
+    const marginY = Math.max(40, frame.height * 0.06);
+
+    const x0 = Math.max(30, Math.floor(Math.min(...xs) - marginX));
+    const y0 = Math.max(30, Math.floor(Math.min(...ys) - marginY));
+    const x1 = Math.min(frame.width - 30, Math.ceil(Math.max(...xs) + marginX));
+    const y1 = Math.min(frame.height - 30, Math.ceil(Math.max(...ys) + marginY));
+
+    const step = 16;
     const rTest = 16;
 
     for (let y = y0; y <= y1; y += step) {
       for (let x = x0; x <= x1; x += step) {
-        // Distance to all known valid screws
         let minDistToKnown = Infinity;
         for (const known of knownScrewCenters) {
           const d = Math.hypot(x - known.x, y - known.y);
           if (d < minDistToKnown) minDistToKnown = d;
         }
 
-        // If far from all expected screws, check if a screw is present here
         if (minDistToKnown > minScrewDistancePx) {
           const check = this.detectScrewInRegion(frame, edges, x, y, 12, rTest);
           if (check.isPresent && check.confidence >= 0.78 && check.center) {
-            // Found unexpected extra screw!
-            extra.push({
-              id: `extra-screw-${extra.length + 1}`,
-              position: {
-                x: check.center.x / frame.width,
-                y: check.center.y / frame.height,
-              },
-              confidence: Math.round(check.confidence * 100) / 100,
-              distanceToNearestExpected: Math.round(minDistToKnown),
+            const duplicate = extra.some((item) => {
+              const px = item.position.x * frame.width;
+              const py = item.position.y * frame.height;
+              return Math.hypot(px - check.center!.x, py - check.center!.y) < minScrewDistancePx;
             });
+            if (!duplicate) {
+              extra.push({
+                id: `extra-screw-${extra.length + 1}`,
+                position: {
+                  x: check.center.x / frame.width,
+                  y: check.center.y / frame.height,
+                },
+                confidence: Math.round(check.confidence * 100) / 100,
+                distanceToNearestExpected: Math.round(minDistToKnown),
+              });
+            }
           }
         }
       }
