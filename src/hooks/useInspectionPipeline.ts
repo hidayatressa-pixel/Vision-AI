@@ -288,6 +288,7 @@ export function useInspectionPipeline({
         roiDetectionMs: Math.round(roiTime),
         ruleValidationMs: Math.round(ruleTime),
         dbSaveMs: 0,
+        plcHandshakeMs: plcHandshakeResult.commLatencyMs,
         totalCycleMs,
         frameResolution: {
           width: frameData.width,
