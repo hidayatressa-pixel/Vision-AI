@@ -17,6 +17,7 @@ export type InspectionMachineState =
   | 'JUDGEMENT_NG'
   | 'ALIGNMENT_ERROR'
   | 'INSPECTION_ERROR'
+  | 'SYSTEM_ERROR'
   | 'WAITING_PART_REMOVAL';
 
 export type JudgementResult = 'OK' | 'NG' | 'ERROR';
