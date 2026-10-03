@@ -51,6 +51,7 @@ export interface PLCConfiguration {
   protocol: PLCProtocol;
   ipAddress: string;
   port: number;
+  gatewayBaseUrl?: string; // HTTP bridge used by the browser for physical PLC I/O
   rack?: number; // Siemens specific
   slot?: number; // Siemens specific
   stationId?: number; // Modbus slave/unit ID
