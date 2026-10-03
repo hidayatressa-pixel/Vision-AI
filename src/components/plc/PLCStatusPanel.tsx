@@ -111,7 +111,12 @@ export const PLCStatusPanel: React.FC<PLCStatusPanelProps> = ({
                   <span className="text-cyan-400">ACK {plcHandshake.roundTripLatencyMs}ms</span>
                 </>
               )}
-            </div>
+            </div>            {plcHandshake.lastErrorMessage && (
+              <div className="mt-1 text-[10px] font-mono text-red-300 truncate max-w-xl">
+                Fault: {plcHandshake.lastErrorMessage}
+              </div>
+            )}
+
           </div>
         </div>
 
