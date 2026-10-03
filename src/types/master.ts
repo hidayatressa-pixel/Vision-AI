@@ -53,6 +53,9 @@ export interface ToleranceConfig {
   maxPositionOffsetPx: number;
   maxRotationToleranceDeg: number;
   minAlignmentConfidence: number;
+  minScale?: number;
+  maxScale?: number;
+  maxAlignmentResidualPx?: number;
   minScrewConfidence: number;
   stabilizationDelayMs: number;
   stabilizationMotionThreshold: number;
