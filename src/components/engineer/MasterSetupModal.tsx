@@ -276,6 +276,25 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
 
   // Save changes to database
   const handleSave = async () => {
+    setSaveError(null);
+    const tolerance = editedRevision.tolerance;
+    const errors: string[] = [];
+    if (editedRevision.anchors.length < 2) errors.push('Minimum 2 reference anchors are required.');
+    if (editedRevision.inspectionROIs.length === 0) errors.push('At least 1 inspection ROI is required.');
+    if (editedRevision.expectedObjectCount !== editedRevision.inspectionROIs.length) {
+      errors.push('Expected object count must match the number of inspection ROIs.');
+    }
+    if (tolerance.maxPositionOffsetPx <= 0 || tolerance.maxPositionOffsetMm <= 0) {
+      errors.push('Position tolerances must be greater than zero.');
+    }
+    if (tolerance.minAlignmentConfidence < 0 || tolerance.minAlignmentConfidence > 1) {
+      errors.push('Alignment confidence must be between 0 and 1.');
+    }
+    if (errors.length > 0) {
+      setSaveError(errors.join(' '));
+      return;
+    }
+
     const updatedRevisions = master.revisions.map((r) => (r.id === editedRevision.id ? editedRevision : r));
     const updatedMaster: MasterProduct = {
       ...master,
@@ -310,6 +329,11 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {saveError && (
+              <div className="hidden md:block max-w-md text-[10px] text-red-300 bg-red-950/70 border border-red-500/50 rounded-lg px-2.5 py-1.5">
+                {saveError}
+              </div>
+            )}
             <button
               onClick={handleSave}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition-colors shadow-lg"
