@@ -13,7 +13,7 @@ import {
   Shield,
   Wifi,
   RefreshCw,
-  CameraCog,
+  Camera,
   Cable,
 } from 'lucide-react';
 import { MasterProduct, MasterRevision } from '../types/master';
@@ -118,7 +118,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     : 'text-slate-400'
                 }`}
               >
-                <CameraCog className="w-4 h-4" />
+                <Camera className="w-4 h-4" />
                 <span className="hidden sm:inline">Camera</span>
               </button>
 
