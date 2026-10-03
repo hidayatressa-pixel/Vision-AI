@@ -218,21 +218,45 @@ class DatabaseService {
 
   public async flushSyncQueue(): Promise<{ synced: number }> {
     const db = await this.getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(['inspections', 'sync_queue'], 'readwrite');
-      const queue = tx.objectStore('sync_queue');
-      const req = queue.getAll();
-
-      req.onsuccess = () => {
-        const items = req.result || [];
-        const count = items.length;
-        // In real factory setup, this posts to MES/SCADA/REST endpoint.
-        queue.clear();
-        tx.oncomplete = () => resolve({ synced: count });
-      };
-
+    const queueItems = await new Promise<any[]>((resolve, reject) => {
+      const tx = db.transaction('sync_queue', 'readonly');
+      const req = tx.objectStore('sync_queue').getAll();
+      req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => reject(req.error);
     });
+
+    if (queueItems.length === 0) return { synced: 0 };
+
+    // Never delete a local record merely because an endpoint was attempted.
+    // A real deployment must expose POST /api/inspections/sync and return 2xx.
+    const endpoint = '/api/inspections/sync';
+    let synced = 0;
+
+    for (const item of queueItems) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item.payload),
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!response.ok) continue;
+
+        const tx = db.transaction(['inspections', 'sync_queue'], 'readwrite');
+        tx.objectStore('inspections').put({ ...item.payload, syncedToCloud: true });
+        tx.objectStore('sync_queue').delete(item.id);
+        await new Promise<void>((resolve, reject) => {
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        });
+        synced++;
+      } catch {
+        // Keep the item queued for the next retry.
+      }
+    }
+
+    return { synced };
   }
 }
 
