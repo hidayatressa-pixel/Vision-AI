@@ -387,9 +387,7 @@ export function useInspectionPipeline({
         setState('WAITING_PART_REMOVAL');
         isProcessingRef.current = false;
       }, 600);
-    },
-    [fps]
-  );
+    }, [fps]);
 
   // Main real-time pipeline tick loop (~20 FPS)
   useEffect(() => {
