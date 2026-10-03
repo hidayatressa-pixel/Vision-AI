@@ -334,7 +334,7 @@ export function useInspectionPipeline({
         setState('JUDGEMENT_NG');
         soundService.playFailBuzzer();
       } else {
-        setState('SYSTEM_ERROR');
+        setState(!alignment.success ? 'ALIGNMENT_ERROR' : 'SYSTEM_ERROR');
         soundService.playFailBuzzer();
       }
 
