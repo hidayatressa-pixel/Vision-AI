@@ -24,6 +24,7 @@ import {
 import { plcService } from '../../services/plc/plcService';
 import { SimulatedPLCAdapter } from '../../services/plc/simulatedPlcAdapter';
 import { PLCConfiguration, PLCProtocol, PLCTagMapping, PLCTriggerMode } from '../../types/plc';
+import { getRuntimeIdentity, saveRuntimeIdentity } from '../../services/runtimeConfig';
 
 interface PLCConfigurationViewProps {
   onConfigSaved?: () => void;
@@ -34,6 +35,7 @@ export const PLCConfigurationView: React.FC<PLCConfigurationViewProps> = ({ onCo
   const [testResult, setTestResult] = useState<{ success: boolean; latencyMs: number; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState<boolean>(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [identity, setIdentity] = useState(getRuntimeIdentity());
 
   // Active adapter fault injection options for testing
   const adapter = plcService.getAdapter();
@@ -69,7 +71,8 @@ export const PLCConfigurationView: React.FC<PLCConfigurationViewProps> = ({ onCo
 
   const handleSave = () => {
     plcService.saveConfig(config);
-    setSaveMessage('PLC Configuration successfully saved and reloaded!');
+    saveRuntimeIdentity(identity);
+    setSaveMessage('PLC configuration and station identity saved.');
     if (onConfigSaved) onConfigSaved();
     setTimeout(() => setSaveMessage(null), 3000);
   };
@@ -154,6 +157,42 @@ export const PLCConfigurationView: React.FC<PLCConfigurationViewProps> = ({ onCo
               <Server className="w-4 h-4 text-cyan-400" />
               <span>Protocol & Network Endpoint</span>
             </h3>
+
+            <div className="grid grid-cols-2 gap-3 pb-1">
+              <div>
+                <label className="text-[11px] font-mono text-slate-300 block mb-1">Station ID</label>
+                <input
+                  value={identity.stationId}
+                  onChange={(e) => setIdentity({ ...identity, stationId: e.target.value })}
+                  className="w-full bg-slate-950 text-white font-mono text-xs border border-slate-700 rounded-lg p-2"
+                  placeholder="STAND-CAM-01"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-mono text-slate-300 block mb-1">Operator ID</label>
+                <input
+                  value={identity.operatorId}
+                  onChange={(e) => setIdentity({ ...identity, operatorId: e.target.value })}
+                  className="w-full bg-slate-950 text-white font-mono text-xs border border-slate-700 rounded-lg p-2"
+                  placeholder="OP-001"
+                />
+              </div>
+            </div>
+
+            {config.protocol !== 'SIMULATION' && (
+              <div>
+                <label className="text-[11px] font-mono text-slate-300 block mb-1">PLC Gateway URL</label>
+                <input
+                  value={config.gatewayBaseUrl || '/api/plc'}
+                  onChange={(e) => setConfig({ ...config, gatewayBaseUrl: e.target.value })}
+                  className="w-full bg-slate-950 text-cyan-300 font-mono text-xs border border-slate-700 rounded-lg p-2"
+                  placeholder="/api/plc"
+                />
+                <p className="text-[10px] text-slate-500 font-mono mt-1">
+                  Browser-to-PLC communication must use an approved edge gateway; no fake browser-side ACKs are accepted.
+                </p>
+              </div>
+            )}
 
             {/* Protocol Selector */}
             <div>
