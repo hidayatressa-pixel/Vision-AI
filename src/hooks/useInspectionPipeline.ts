@@ -136,7 +136,9 @@ export function useInspectionPipeline({
       if (!master || !revision) return;
 
       const cycleStart = performance.now();
-      setState('ALIGNING');
+
+      try {
+        setState('ALIGNING');
       plcService.logTimelineEvent('ALIGNMENT_STARTED', 'VISION', 'Locating reference fiducials A, B, C, D');
 
       const gray = toGrayscale(frameData);
@@ -160,19 +162,46 @@ export function useInspectionPipeline({
       }
 
       // 2. Transformed ROI Detection
-      setState('INSPECTING');
-      plcService.logTimelineEvent('ROI_INSPECTION_STARTED', 'VISION', `Evaluating ${revision.inspectionROIs.length} transformed screw ROIs`);
+      // IMPORTANT: ROI inspection is only valid after successful alignment.
+      // If alignment fails, the Rule Engine must receive empty ROI results so
+      // it can classify the cycle as a SYSTEM ERROR rather than Product NG.
+      let roiResults: ROIInspectionResult[] = [];
+      let extraObjects: ExtraDetectedObject[] = [];
+      let roiTime = 0;
 
-      const roiStart = performance.now();
-      const { roiResults, extraObjects } = roiInspector.inspectROIs(
-        gray,
-        revision.inspectionROIs,
-        alignment,
-        revision.tolerance
-      );
-      const roiTime = performance.now() - roiStart;
-      setLatestRoiResults(roiResults);
-      setLatestExtraObjects(extraObjects);
+      if (alignment.success) {
+        setState('INSPECTING');
+        plcService.logTimelineEvent(
+          'ROI_INSPECTION_STARTED',
+          'VISION',
+          `Evaluating ${revision.inspectionROIs.length} transformed screw ROIs`
+        );
+
+        const roiStart = performance.now();
+        const inspection = roiInspector.inspectROIs(
+          gray,
+          revision.inspectionROIs,
+          alignment,
+          revision.tolerance
+        );
+
+        roiResults = inspection.roiResults;
+        extraObjects = inspection.extraObjects;
+        roiTime = performance.now() - roiStart;
+
+        setLatestRoiResults(roiResults);
+        setLatestExtraObjects(extraObjects);
+      } else {
+        setState('INSPECTION_ERROR');
+        setLatestRoiResults([]);
+        setLatestExtraObjects([]);
+
+        plcService.logTimelineEvent(
+          'ROI_INSPECTION_SKIPPED',
+          'VISION',
+          `ROI inspection skipped because alignment failed: ${alignment.errorMessage || 'Unknown alignment error'}`
+        );
+      }
 
       // 3. Rule Engine Judgement
       const ruleStart = performance.now();
@@ -302,6 +331,37 @@ export function useInspectionPipeline({
 
       // 9. Freeze result and wait for part removal (Anti-Double Detection)
       presenceDetectorRef.current.markPartInspected();
+      setTimeout(() => {
+        setState('WAITING_PART_REMOVAL');
+        isProcessingRef.current = false;
+      }, 600);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+
+      console.error('[InspectionPipeline] Inspection cycle failed:', error);
+
+      plcService.logTimelineEvent(
+        'INSPECTION_ERROR',
+        'VISION',
+        `Inspection cycle aborted: ${message}`
+      );
+
+      // Never allow an exception to leave the pipeline permanently locked.
+      setState('INSPECTION_ERROR');
+      soundService.playFailBuzzer();
+
+      try {
+        plcService.clearInterlock();
+      } catch (interlockError) {
+        console.error(
+          '[InspectionPipeline] Failed to clear PLC interlock:',
+          interlockError
+        );
+      }
+
+      presenceDetectorRef.current.markPartInspected();
+
       setTimeout(() => {
         setState('WAITING_PART_REMOVAL');
         isProcessingRef.current = false;
