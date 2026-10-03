@@ -182,12 +182,9 @@ export class AlignmentEngine {
     const maxRotation = tolerance.maxRotationToleranceDeg || 15;
     const minConfidence = tolerance.minAlignmentConfidence || 0.55;
 
-    const minScale = 0.80;
-    const maxScale = 1.20;
-    const maxResidualPx = Math.max(
-      tolerance.maxPositionOffsetPx * 2,
-      10
-    );
+    const minScale = tolerance.minScale ?? 0.80;
+    const maxScale = tolerance.maxScale ?? 1.20;
+    const maxResidualPx = tolerance.maxAlignmentResidualPx ?? Math.max(tolerance.maxPositionOffsetPx * 2, 10);
 
     const rotationOk = Math.abs(rotationDeg) <= maxRotation;
     const confidenceOk = meanConfidence >= minConfidence;
