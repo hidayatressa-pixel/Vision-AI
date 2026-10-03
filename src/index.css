@@ -186,3 +186,122 @@ body {
 @media (max-width: 1100px) {
   .rvi-topbar-inner { min-height: 68px; }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Operator-floor refinement                                                   */
+/* -------------------------------------------------------------------------- */
+.rvi-app {
+  min-height: 100vh;
+  isolation: isolate;
+}
+
+.rvi-app ::selection {
+  background: rgba(49, 182, 171, .32);
+  color: #fff;
+}
+
+.rvi-app ::-webkit-scrollbar { width: 8px; height: 8px; }
+.rvi-app ::-webkit-scrollbar-track { background: #0b1015; }
+.rvi-app ::-webkit-scrollbar-thumb {
+  background: #2b3944;
+  border-radius: 999px;
+  border: 2px solid #0b1015;
+}
+.rvi-app ::-webkit-scrollbar-thumb:hover { background: #40515e; }
+
+.rvi-topbar::after {
+  content: "";
+  display: block;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(49,182,171,.32), transparent);
+}
+
+.rvi-brand-mark {
+  position: relative;
+  overflow: hidden;
+}
+.rvi-brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(120deg, transparent 35%, rgba(255,255,255,.08), transparent 65%);
+  transform: translateX(-80%);
+  animation: rvi-scan-glint 5s ease-in-out infinite;
+}
+
+.rvi-main {
+  padding-bottom: 28px;
+}
+
+.rvi-inspection-stage {
+  position: relative;
+  min-height: 360px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(49,182,171,.055), transparent 42%),
+    #080c10;
+}
+
+.rvi-inspection-stage video,
+.rvi-inspection-stage canvas {
+  image-rendering: auto;
+}
+
+.rvi-inspection-stage:focus-within {
+  border-color: rgba(49,182,171,.55);
+  box-shadow: 0 0 0 1px rgba(49,182,171,.12), 0 22px 60px rgba(0,0,0,.34);
+}
+
+.rvi-camera-strip {
+  pointer-events: none;
+}
+
+.rvi-metric-card {
+  min-height: 78px;
+  background: linear-gradient(180deg, rgba(24,33,42,.94), rgba(18,26,33,.94));
+  border-color: #2b3944;
+}
+
+.rvi-app button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rvi-app button:disabled {
+  cursor: not-allowed;
+  opacity: .52;
+}
+
+@keyframes rvi-scan-glint {
+  0%, 65%, 100% { transform: translateX(-80%); }
+  82% { transform: translateX(80%); }
+}
+
+@media (max-width: 900px) {
+  .rvi-topbar-inner {
+    gap: 8px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+  .rvi-main {
+    padding: 10px;
+    padding-bottom: 18px;
+  }
+  .rvi-inspection-stage {
+    min-height: 300px;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .rvi-brand-mark { width: 34px; height: 34px; }
+  .rvi-main { padding: 8px; }
+  .rvi-inspection-stage { min-height: 250px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rvi-brand-mark::after,
+  .rvi-app .animate-pulse,
+  .rvi-app .animate-spin,
+  .rvi-app .animate-ping {
+    animation: none !important;
+  }
+}
