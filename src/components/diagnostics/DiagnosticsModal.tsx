@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { Activity, CheckCircle2, Clock, Cpu, Database, Gauge, Zap } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { SystemMetrics } from '../../types/inspection';
 
 interface DiagnosticsModalProps {
