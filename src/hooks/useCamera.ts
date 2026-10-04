@@ -143,10 +143,29 @@ export function useCamera(options: UseCameraOptions = {}) {
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
           const settings = videoTrack.getSettings();
+          const intrinsicWidth = videoRef.current?.videoWidth || settings.width || 800;
+          const intrinsicHeight = videoRef.current?.videoHeight || settings.height || 600;
           setVideoDimensions({
-            width: settings.width || 800,
-            height: settings.height || 600,
+            width: intrinsicWidth,
+            height: intrinsicHeight,
           });
+        }
+
+        // Some browsers populate videoWidth/videoHeight only after metadata is
+        // loaded. Refresh the processing canvas dimensions from the real video
+        // buffer instead of assuming a synthetic 800x600 frame.
+        const video = videoRef.current;
+        if (video) {
+          const syncVideoDimensions = () => {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+              setVideoDimensions({
+                width: video.videoWidth,
+                height: video.videoHeight,
+              });
+            }
+          };
+          if (video.readyState >= 1) syncVideoDimensions();
+          video.addEventListener('loadedmetadata', syncVideoDimensions, { once: true });
         }
 
         setCameraState('streaming');
