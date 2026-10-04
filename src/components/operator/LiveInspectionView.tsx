@@ -282,7 +282,7 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
         state={state}
         stabilizationProgress={stabilizationProgress}
         currentResult={currentResult}
-        expectedCount={activeRevision?.expectedObjectCount || 6}
+        expectedCount={activeRevision?.expectedObjectCount || 8}
       />
 
       {/* 2. Main Live Inspection Stage */}
@@ -438,12 +438,12 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
                 onChange={(e) => enableVirtualMode(e.target.value as TestScenarioType)}
                 className="bg-slate-950 text-cyan-300 font-mono text-xs border border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500"
               >
-                <option value="PERFECT_PASS">🟢 Master Pass (All 6 Screws OK)</option>
+                <option value="PERFECT_PASS">🟢 Master Pass (All 8 Screws OK)</option>
                 <option value="SHIFTED_VIBRATION">🔄 Shifted & Rotated (+14px, +2.4° - Alignment Test: PASS)</option>
                 <option value="MISSING_SCREW_4">🔴 Defect: Screw #4 Missing (NG)</option>
                 <option value="MISSING_SCREW_2">🔴 Defect: Screw #2 Missing (NG)</option>
                 <option value="OUT_OF_TOLERANCE_SCREW_2">🔴 Defect: Screw #2 Out of Tolerance (+4.2mm) (NG)</option>
-                <option value="EXTRA_SCREW">🔴 Defect: Extra 7th Screw Present (NG)</option>
+                <option value="EXTRA_SCREW">🔴 Defect: Extra Screw Present (NG)</option>
                 <option value="ALIGNMENT_FAILURE">⚠️ Alignment Error: Fiducials Obstructed</option>
                 <option value="EMPTY_STAND">⏳ Empty Stand (Part Removed)</option>
               </select>
