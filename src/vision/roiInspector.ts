@@ -58,7 +58,9 @@ export class ROIInspector {
         { x: roi.x, y: roi.y },
         frame.width,
         frame.height,
-        alignment
+        alignment,
+        masterWidth,
+        masterHeight
       );
 
       // Search radius in pixels
@@ -148,7 +150,9 @@ export class ROIInspector {
       rois,
       alignment,
       detectedScrewPositions,
-      tolerance
+      tolerance,
+      masterWidth,
+      masterHeight
     );
 
     return {
@@ -274,7 +278,9 @@ export class ROIInspector {
     rois: InspectionROI[],
     alignment: AlignmentResult,
     knownScrewCenters: Position2D[],
-    tolerance: ToleranceConfig
+    tolerance: ToleranceConfig,
+    masterWidth: number,
+    masterHeight: number
   ): ExtraDetectedObject[] {
     const extra: ExtraDetectedObject[] = [];
     const minScrewDistancePx = Math.max(12, tolerance.maxPositionOffsetPx * 1.8);
@@ -287,7 +293,9 @@ export class ROIInspector {
         { x: roi.x, y: roi.y },
         frame.width,
         frame.height,
-        alignment
+        alignment,
+        masterWidth,
+        masterHeight
       )
     );
 
