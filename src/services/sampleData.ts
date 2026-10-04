@@ -78,29 +78,82 @@ export async function initSeedDataIfEmpty() {
     return;
   }
 
-  // Remove the legacy seeded configuration without touching engineer-created masters.
-  const legacySeed = existing.find((master) => master.id === 'prd-bracket-m4');
-  if (legacySeed && legacySeed.id !== SEED_PRODUCT_A.id) {
-    await dbService.deleteMaster(legacySeed.id);
-  }
+  // One-time data normalization: there must be exactly one registered
+  // Reflector Assy HL GJRA master. If an older duplicate contains real
+  // uploaded master/reference images, keep that configured copy and migrate
+  // it onto the canonical production ID before removing duplicates.
+  const reflectorMasters = existing.filter(
+    (master) =>
+      master.id === SEED_PRODUCT_A.id ||
+      master.productCode === SEED_PRODUCT_A.productCode ||
+      master.productName.trim().toLowerCase() === SEED_PRODUCT_A.productName.trim().toLowerCase()
+  );
 
-  const seeded = existing.find((master) => master.id === SEED_PRODUCT_A.id);
-  if (!seeded && legacySeed) {
-    await dbService.saveMaster(SEED_PRODUCT_A);
-    return;
-  }
-  if (seeded) {
-    const isLegacyShape =
-      seeded.productName !== SEED_PRODUCT_A.productName ||
-      seeded.revisions.length !== 1 ||
-      seeded.revisions.some((revision) =>
-        revision.id === 'rev-01-6screw' ||
-        revision.id === 'rev-02-8screw' ||
-        revision.masterImageUrl.includes('product-a-')
+  if (reflectorMasters.length > 0) {
+    const completeness = (master: MasterProduct) => {
+      const revision = master.revisions.find((r) => r.id === master.activeRevisionId) || master.revisions[0];
+      if (!revision) return 0;
+      return (
+        (revision.masterImageUrl ? 1000 : 0) +
+        revision.referenceImages.filter((r) => Boolean(r.imageUrl)).length * 100 +
+        (revision.anchors.length === 4 ? 20 : 0) +
+        (revision.inspectionROIs.length === 8 ? 20 : 0)
       );
+    };
 
-    if (isLegacyShape) {
-      await dbService.saveMaster(SEED_PRODUCT_A);
+    const source = [...reflectorMasters].sort((a, b) => {
+      const scoreDiff = completeness(b) - completeness(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return a.id === SEED_PRODUCT_A.id ? -1 : 1;
+    })[0];
+
+    const sourceRevision =
+      source.revisions.find((r) => r.id === source.activeRevisionId) || source.revisions[0];
+
+    if (sourceRevision) {
+      const canonical: MasterProduct = {
+        ...source,
+        id: SEED_PRODUCT_A.id,
+        productCode: SEED_PRODUCT_A.productCode,
+        productName: SEED_PRODUCT_A.productName,
+        activeRevisionId: sourceRevision.id === 'rev-01-8screw' ? sourceRevision.id : 'rev-01-8screw',
+        revisions: [{
+          ...sourceRevision,
+          id: 'rev-01-8screw',
+          masterId: SEED_PRODUCT_A.id,
+          revisionCode: 'REV-01',
+          expectedObjectCount: 8,
+          masterWidth: sourceRevision.masterWidth || 800,
+          masterHeight: sourceRevision.masterHeight || 600,
+          inspectionROIs: sourceRevision.inspectionROIs?.length === 8
+            ? sourceRevision.inspectionROIs
+            : SEED_PRODUCT_A.revisions[0].inspectionROIs,
+          anchors: sourceRevision.anchors?.length === 4
+            ? sourceRevision.anchors
+            : SEED_PRODUCT_A.revisions[0].anchors,
+          referenceImages: sourceRevision.referenceImages?.length === 6
+            ? sourceRevision.referenceImages
+            : SEED_PRODUCT_A.revisions[0].referenceImages,
+        }],
+        updatedAt: new Date().toISOString(),
+      };
+
+      await dbService.saveMaster(canonical);
+
+      for (const duplicate of reflectorMasters) {
+        if (duplicate.id !== SEED_PRODUCT_A.id) {
+          await dbService.deleteMaster(duplicate.id);
+        }
+      }
+      return;
     }
+  }
+
+  // Remove the old Product A seed if it still exists.
+  const legacySeed = existing.find((master) => master.id === 'prd-bracket-m4');
+  if (legacySeed) await dbService.deleteMaster(legacySeed.id);
+
+  if (!existing.some((master) => master.id === SEED_PRODUCT_A.id)) {
+    await dbService.saveMaster(SEED_PRODUCT_A);
   }
 }
