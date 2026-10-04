@@ -17,7 +17,9 @@ export class ROIInspector {
     frame: GrayscaleImage,
     rois: InspectionROI[],
     alignment: AlignmentResult,
-    tolerance: ToleranceConfig
+    tolerance: ToleranceConfig,
+    masterWidth: number,
+    masterHeight: number
   ): Promise<{
     roiResults: ROIInspectionResult[];
     extraObjects: ExtraDetectedObject[];
@@ -38,9 +40,15 @@ export class ROIInspector {
     const results: ROIInspectionResult[] = [];
     let detectedScrewCount = 0;
 
-    // Approximate pixel to mm conversion based on bracket scale
-    // e.g. 800px width on a 80mm bracket = 10 px / mm
-    const pxPerMm = (frame.width / 800) * 10.0;
+    // Tolerance pixels are calibrated in the master coordinate system.
+    // Scale them to the actual camera frame instead of treating 25px as a
+    // universal value. This keeps the same physical tolerance at 720p, 1080p,
+    // and other camera resolutions.
+    const masterMinDimension = Math.max(1, Math.min(masterWidth, masterHeight));
+    const frameMinDimension = Math.min(frame.width, frame.height);
+    const framePxPerMasterPx = frameMinDimension / masterMinDimension;
+    const configuredMaxOffsetPx = Math.max(1, tolerance.maxPositionOffsetPx * framePxPerMasterPx);
+    const pxPerMm = Math.max(0.001, configuredMaxOffsetPx / Math.max(0.001, tolerance.maxPositionOffsetMm));
 
     const detectedScrewPositions: Position2D[] = [];
 
@@ -56,7 +64,7 @@ export class ROIInspector {
       // Search radius in pixels
       const expectedRadiusPx = roi.radius * Math.min(frame.width, frame.height);
       const toleranceRadiusPx = Math.max(
-        tolerance.maxPositionOffsetPx,
+        configuredMaxOffsetPx,
         roi.toleranceRadius * Math.min(frame.width, frame.height)
       );
 
