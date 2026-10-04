@@ -111,6 +111,13 @@ export function useInspectionPipeline({
     presenceDetectorRef.current.resetPartState();
     setState('WAITING_FOR_PART');
     setStabilizationProgress(0);
+    setMotionDelta(0);
+    setCurrentResult(null);
+    setLatestAlignment(null);
+    setLatestRoiResults([]);
+    setLatestExtraObjects([]);
+    detectionStartTimeRef.current = 0;
+    cycleStartTimeRef.current = 0;
     isProcessingRef.current = false;
     plcService.clearInterlock();
   }, []);
