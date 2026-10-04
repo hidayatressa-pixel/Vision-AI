@@ -399,8 +399,14 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
                         isSelected ? 'border-cyan-400 bg-cyan-500/10 shadow-lg shadow-cyan-950/30' : 'border-slate-800 bg-slate-900 hover:border-slate-600'
                       }`}
                     >
-                      <div className="aspect-square rounded-lg overflow-hidden bg-slate-950 border border-slate-800">
-                        <img src={reference.imageUrl} alt={reference.label} className="h-full w-full object-cover" />
+                      <div className="aspect-square rounded-lg overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center">
+                        {reference.imageUrl ? (
+                          <img src={reference.imageUrl} alt={reference.label} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="px-2 text-center text-[9px] font-mono font-bold text-amber-400">
+                            UPLOAD REQUIRED
+                          </div>
+                        )}
                       </div>
                       <div className="px-1 pt-1.5">
                         <div className={`text-[10px] font-mono font-bold truncate ${isSelected ? 'text-cyan-300' : 'text-slate-200'}`}>{reference.label}</div>
