@@ -359,12 +359,11 @@ export function useInspectionPipeline({
         })
         .catch(console.error);
 
-      // 9. Freeze result and wait for part removal (Anti-Double Detection)
+      // 9. Freeze the completed judgement. The live loop owns the lifecycle
+      // from this point: removal or repositioning can re-arm the part without
+      // relying on a stale timeout.
       presenceDetectorRef.current.markPartInspected();
-      setTimeout(() => {
-        setState('WAITING_PART_REMOVAL');
-        isProcessingRef.current = false;
-      }, 600);
+      isProcessingRef.current = false;
     } catch (error) {
       const message =
         error instanceof Error ? error.message : String(error);
@@ -391,11 +390,7 @@ export function useInspectionPipeline({
       }
 
       presenceDetectorRef.current.markPartInspected();
-
-      setTimeout(() => {
-        setState('WAITING_PART_REMOVAL');
-        isProcessingRef.current = false;
-      }, 600);
+      isProcessingRef.current = false;
       }
     }, [fps]);
 
