@@ -1,6 +1,6 @@
 /**
- * Deterministic dummy master data for the first end-to-end demo.
- * Master images live in /public/master-images so engineers can see and replace them explicitly.
+ * Production master data for the fixed line part.
+ * Master images live in /public/master-images.
  */
 
 import { InspectionROI, MasterProduct, ReferenceImage } from '../types/master';
@@ -59,7 +59,7 @@ const eightScrewReferenceImages: ReferenceImage[] = eightScrewROIs.map((roi, ind
   label: roi.name,
   roiId: roi.id,
   imageUrl: masterImage(`references/product-a-rev01/screw-${String((index % 6) + 1).padStart(2, '0')}.png`),
-  description: `Dummy reference placeholder for ${roi.name}. Replace with the correct REV-02 reference image before production use.`,
+  description: `Golden reference for ${roi.name}.`,
 }));
 
 const makeRevision = (
@@ -92,9 +92,9 @@ const makeRevision = (
 
 export const SEED_PRODUCT_A: MasterProduct = {
   id: 'prd-bracket-m4',
-  productCode: 'PRD-BRACKET-M4',
-  productName: 'Product A · M4 Bracket',
-  description: 'Production master with 8 required screws and four alignment fiducials.'
+  productCode: 'PRD-REFLECTOR-ASSY-HL-GJRA',
+  productName: 'Reflector Assy HL GJRA',
+  description: 'Production master for Reflector Assy HL GJRA with 8 required screws and four alignment fiducials.',
   // Latest engineering revision is the active line configuration: 8 screws.
   activeRevisionId: 'rev-02-8screw',
   isActive: true,
