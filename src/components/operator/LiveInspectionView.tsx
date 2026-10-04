@@ -474,7 +474,7 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
       />
 
       {/* 5. Per-ROI Realtime Status Breakdown (Explainable Visual Inspector) */}
-      {latestRoiResults.length > 0 && (
+      {activeRevision && latestRoiResults.length > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
