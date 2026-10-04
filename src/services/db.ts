@@ -82,6 +82,16 @@ class DatabaseService {
     });
   }
 
+  public async deleteMaster(id: string): Promise<void> {
+    const db = await this.getDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('masters', 'readwrite');
+      const request = tx.objectStore('masters').delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   public async saveMaster(master: MasterProduct): Promise<void> {
     const db = await this.getDb();
     return new Promise((resolve, reject) => {
