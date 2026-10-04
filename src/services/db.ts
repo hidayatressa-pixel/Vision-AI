@@ -191,14 +191,15 @@ class DatabaseService {
   }
 
   public async clearInspectionHistory(): Promise<void> {
-    await this.request('', {
+    // Explicit non-null filter keeps this operation compatible with PostgREST
+    // and makes the destructive intent obvious.
+    await this.request('?id=not.is.null', {
       method: 'DELETE',
       headers: { Prefer: 'return=minimal' },
     });
   }
 
   public async getPendingSyncCount(): Promise<number> {
-    // Cloud-first architecture has no local sync queue.
     return 0;
   }
 
