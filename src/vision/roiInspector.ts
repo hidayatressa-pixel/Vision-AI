@@ -152,7 +152,8 @@ export class ROIInspector {
       detectedScrewPositions,
       tolerance,
       masterWidth,
-      masterHeight
+      masterHeight,
+      configuredMaxOffsetPx
     );
 
     return {
@@ -280,10 +281,11 @@ export class ROIInspector {
     knownScrewCenters: Position2D[],
     tolerance: ToleranceConfig,
     masterWidth: number,
-    masterHeight: number
+    masterHeight: number,
+    configuredMaxOffsetPx: number
   ): ExtraDetectedObject[] {
     const extra: ExtraDetectedObject[] = [];
-    const minScrewDistancePx = Math.max(12, tolerance.maxPositionOffsetPx * 1.8);
+    const minScrewDistancePx = Math.max(12, configuredMaxOffsetPx * 1.8);
 
     // Build the search area from the transformed master ROIs instead of assuming
     // the workpiece is axis-aligned at the frame centre. This keeps extra-object
