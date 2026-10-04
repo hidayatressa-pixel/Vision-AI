@@ -478,7 +478,13 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
                   <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3">
                     <div className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 mb-2">Selected Golden Reference</div>
                     <div className="flex items-center gap-3">
-                      <img src={selectedReference.imageUrl} alt={selectedReference.label} className="w-20 h-20 rounded-lg object-cover border border-slate-700 bg-slate-950" />
+                      <div className="w-20 h-20 rounded-lg border border-slate-700 bg-slate-950 flex items-center justify-center shrink-0">
+                        {selectedReference.imageUrl ? (
+                          <img src={selectedReference.imageUrl} alt={selectedReference.label} className="w-full h-full rounded-lg object-cover" />
+                        ) : (
+                          <span className="text-[8px] font-mono font-bold text-amber-400 text-center">UPLOAD</span>
+                        )}
+                      </div>
                       <div className="min-w-0">
                         <div className="text-sm font-bold text-white">{selectedReference.label}</div>
                         <div className="text-[10px] font-mono text-slate-500 mt-1">{selectedReference.description || 'Reference evidence for the selected inspection point.'}</div>
