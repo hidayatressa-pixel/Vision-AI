@@ -1,66 +1,74 @@
-# Realtime Vision Inspection System
+# Vision Station
 
-A zero-touch manufacturing vision-inspection prototype for a smartphone-mounted camera.
+Industrial vision inspection station for **Reflector Assy HL GJRA**.
 
-## Dummy master image
+The application is designed for a fixed camera station where each workpiece is located, aligned against a configured master, inspected at eight screw positions, and classified deterministically as **OK**, **NG**, or **ERROR**.
 
-The bundled dummy master is a real project asset, not an inline generated data URL:
+## Core workflow
 
-- `public/master-images/product-a-rev01-master.svg` — Product A / REV-01 / 6 screws
-- `public/master-images/product-a-rev02-master.svg` — Product A / REV-02 / 8 screws
+1. **Master Setup** — Engineering uploads one approved master image, configures four alignment anchors, eight screw inspection ROIs, tolerances, and exactly six close-up reference images.
+2. **Part Detection** — The camera monitors the configured detection zone and waits for the workpiece to settle.
+3. **Alignment** — Fiducial anchors determine translation, rotation, scale, and residual error before inspection.
+4. **Inspection** — Each of the eight required screw locations is checked for presence, confidence, and position tolerance. Unexpected screw-like objects are also screened.
+5. **Rule Engine** — The configured master remains authoritative. Alignment failures are reported as system errors; part defects produce NG.
+6. **Re-arm** — After a judgement, the station waits for removal or a meaningful replacement/repositioning change before allowing another inspection.
+7. **History** — Inspection results are stored locally in IndexedDB with an optional synchronization queue.
 
-The application seeds `REV-01` as the active dummy master. Open **Engineer → Masters** to see the master image and **Edit / Calibrate** to edit anchors and screw ROIs.
+## Engineering configuration
 
-## Dummy inspection flow
+Settings are protected by a local engineering password. The engineering area provides:
 
-The stand simulator provides deterministic scenarios:
+- Master and revision management
+- Master image and reference-image upload
+- Four-point fiducial alignment
+- Eight required screw ROIs
+- Position, confidence, rotation, and stabilization tolerances
+- Camera selection and background calibration
+- PLC protocol and interlock configuration
+- Runtime diagnostics
 
-- Master Pass — all six screws present
-- Shifted & Rotated — validates alignment compensation
-- Missing Screw #4
-- Missing Screw #2
-- Screw #2 out of tolerance
-- Extra screw
-- Alignment failure
-- Empty stand
+The operator view is intentionally focused on the live camera inspection and final judgement.
 
-Normal operator inspection is zero-touch. Engineering controls such as simulator selection, background calibration, master setup, and PLC configuration are restricted to the Engineer role.
+## Hardware and integration
 
-## Physical camera
+The station supports browser camera input and an engineering simulator for deterministic dry-runs. PLC communication is isolated behind an adapter so a real industrial gateway can be integrated without changing the inspection rule layer.
 
-The inspection page uses the smartphone/browser camera when available. Mount the phone on a fixed stand and keep the inspection lighting and background consistent.
-
-## PLC
-
-PLC communication is abstracted behind an adapter and includes simulation, handshake, heartbeat, ACK, result timeout, stale-result protection, and interlock states. Critical machine safety functions must remain implemented in the PLC/safety hardware rather than in the browser.
+The browser is not a safety controller. Machine safety, guarding, and safety interlocks must remain implemented in the appropriate industrial control and safety hardware.
 
 ## Local development
+
+Requirements: Node.js and npm.
 
 ```bash
 npm install
 npm run dev
 ```
 
-The project is built with React + Vite and stores the demo master/inspection history locally using IndexedDB.
+For a production build:
 
-## Golden reference images
+```bash
+npm run build
+npm run preview
+```
 
-Each inspection point can have a close-up reference image stored under:
+## Commissioning checklist
 
-`public/master-images/references/<revision>/`
+Before line use:
 
-The master revision stores these in `referenceImages`, each linked to its `roiId`. Engineer → Masters → Edit / Calibrate shows the reference set side-by-side, and the live ROI validation cards can show the linked golden reference for quick NG verification.
+- Upload the approved master image.
+- Upload all six approved close-up reference images.
+- Verify all four alignment anchors against the fixture.
+- Verify all eight screw ROIs and their tolerances.
+- Calibrate the empty background under production lighting.
+- Validate OK, missing-screw, position-error, extra-object, alignment-error, and replacement-part scenarios using representative images.
+- Validate camera mounting, lighting, PLC handshake, and machine safety with the responsible engineering team.
 
-For real projects, replace the bundled dummy PNGs with the actual close-up reference images for each inspection point and keep the ROI mapping stable.
+## Project structure
 
-## UI Direction
+- `src/vision` — alignment, presence, ROI inspection, OpenCV-assisted detection, and rule evaluation
+- `src/hooks` — camera and inspection pipeline orchestration
+- `src/components` — operator, engineering, settings, history, and integration interfaces
+- `src/services` — local persistence, audio, runtime identity, and PLC adapters
+- `public/master-images` — reserved for approved master assets supplied during commissioning
 
-The interface has been refined into a cleaner industrial control-room style:
-- graphite/charcoal surfaces instead of high-saturation neon panels
-- teal used as the primary system accent; green/red reserved for inspection states
-- compact, consistent navigation with dedicated industrial Lucide icons
-- softer borders and reduced corner radius for a technical, professional appearance
-- high-contrast operator result states remain intentionally large for stand-mounted viewing
-- engineering/diagnostic screens share the same visual language
-
-The core inspection, alignment, rule-engine, reference-image, database, and PLC logic remains intact.
+This repository intentionally contains no bundled production reference imagery. Master data is configured at the station through Master Setup.
