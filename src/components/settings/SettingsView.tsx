@@ -52,7 +52,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate, onClose 
     );
   }
 
-  const items: Array<{ label: string; description: string; icon: React.ReactNode; tab: ActiveTab }> = [
+  const items: Array<{ label: string; description: string; icon: React.ReactElement<{ className?: string }>; tab: ActiveTab }> = [
     { label: 'Master & Inspection', description: 'Product master, six references, ROI and tolerances.', icon: <Boxes />, tab: 'MASTERS' },
     { label: 'Camera', description: 'Camera device and calibration.', icon: <Camera />, tab: 'CAMERA_SETUP' },
     { label: 'PLC', description: 'Trigger, handshake and PLC configuration.', icon: <Cable />, tab: 'PLC_SETUP' },
@@ -72,7 +72,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate, onClose 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {items.map((item) => (
           <button key={item.tab} onClick={() => onNavigate(item.tab)} className="group flex items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5 text-left transition hover:border-cyan-500/40 hover:bg-slate-900">
-            <div className="rounded-xl bg-slate-950 p-3 text-cyan-400 group-hover:text-cyan-300">{React.cloneElement(item.icon as React.ReactElement, { className: 'h-5 w-5' })}</div>
+            <div className="rounded-xl bg-slate-950 p-3 text-cyan-400 group-hover:text-cyan-300">{React.cloneElement(item.icon, { className: 'h-5 w-5' })}</div>
             <div><div className="font-semibold text-white">{item.label}</div><div className="mt-1 text-xs text-slate-500">{item.description}</div></div>
           </button>
         ))}
