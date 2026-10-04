@@ -50,8 +50,10 @@ export const SEED_PRODUCT_A: MasterProduct = {
     revisionCode: 'REV-01',
     revisionNote: 'Initial production configuration · 8 screws',
     expectedObjectCount: 8,
-    masterWidth: 800,
-    masterHeight: 600,
+    // Dimensions are populated from the actual uploaded master image.
+    // Do not use a synthetic 800x600 calibration canvas.
+    masterWidth: 0,
+    masterHeight: 0,
     masterImageUrl: '',
     detectionZone: { x: 0.15, y: 0.15, width: 0.7, height: 0.7 },
     anchors: anchors.map((anchor) => ({ ...anchor })),
