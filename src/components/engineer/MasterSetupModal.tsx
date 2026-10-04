@@ -54,14 +54,97 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const img = new Image();
-    img.src = editedRevision.masterImageUrl;
-    img.onload = () => {
-      canvas.width = editedRevision.masterWidth || 800;
-      canvas.height = editedRevision.masterHeight || 600;
+    const drawOverlay = () => {
+      const w = canvas.width;
+      const h = canvas.height;
 
-      // Draw reference master image
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // 1. Draw Detection Zone
+      const dz = editedRevision.detectionZone;
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(dz.x * w, dz.y * h, dz.width * w, dz.height * h);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.05)';
+      ctx.fillRect(dz.x * w, dz.y * h, dz.width * w, dz.height * h);
+
+      ctx.font = '10px monospace';
+      ctx.fillStyle = '#06b6d4';
+      ctx.fillText('DETECTION ZONE', dz.x * w + 8, dz.y * h + 16);
+
+      // 2. Draw Anchors (Fiducials A, B, C, D)
+      for (const a of editedRevision.anchors) {
+        const ax = a.x * w;
+        const ay = a.y * h;
+        const isSel = selectedItemType === 'ANCHOR' && selectedId === a.id;
+
+        ctx.strokeStyle = isSel ? '#f59e0b' : '#38bdf8';
+        ctx.lineWidth = isSel ? 3 : 2;
+        ctx.beginPath();
+        ctx.arc(ax, ay, 12, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(ax - 18, ay);
+        ctx.lineTo(ax + 18, ay);
+        ctx.moveTo(ax, ay - 18);
+        ctx.lineTo(ax, ay + 18);
+        ctx.stroke();
+
+        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = isSel ? '#f59e0b' : '#38bdf8';
+        ctx.fillText(a.name, ax + 14, ay - 6);
+      }
+
+      // 3. Draw Inspection ROIs
+      for (const roi of editedRevision.inspectionROIs) {
+        const rx = roi.x * w;
+        const ry = roi.y * h;
+        const isSel = selectedItemType === 'ROI' && selectedId === roi.id;
+        const rPx = 22;
+        ctx.strokeStyle = isSel ? '#f59e0b' : '#10b981';
+        ctx.lineWidth = isSel ? 3 : 2;
+        ctx.beginPath();
+        ctx.arc(rx, ry, rPx, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const tolPx = editedRevision.tolerance.maxPositionOffsetPx || 25;
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.arc(rx, ry, tolPx, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = isSel ? '#f59e0b' : '#10b981';
+        ctx.textAlign = 'center';
+        ctx.fillText(roi.name, rx, ry + rPx + 14);
+      }
+      ctx.textAlign = 'start';
+    };
+
+    const imageUrl = editedRevision.masterImageUrl?.trim();
+    canvas.width = editedRevision.masterWidth || 800;
+    canvas.height = editedRevision.masterHeight || 600;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!imageUrl) return;
+
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        // Keep the configured inspection coordinate system stable while
+        // rendering the uploaded master image into it.
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        drawOverlay();
+      }
+    };
+    img.onerror = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      console.warn('[MasterSetup] Failed to render master image');
+    };
+    img.src = imageUrl;
 
       const w = canvas.width;
       const h = canvas.height;
