@@ -85,6 +85,10 @@ export async function initSeedDataIfEmpty() {
   }
 
   const seeded = existing.find((master) => master.id === SEED_PRODUCT_A.id);
+  if (!seeded && legacySeed) {
+    await dbService.saveMaster(SEED_PRODUCT_A);
+    return;
+  }
   if (seeded) {
     const isLegacyShape =
       seeded.productName !== SEED_PRODUCT_A.productName ||
