@@ -67,14 +67,7 @@ export class AlignmentEngine {
       const matches: AnchorMatch[] = [];
 
       for (const anchor of anchors) {
-        const expected = this.transformMasterPoint(
-          { x: anchor.x, y: anchor.y },
-          frame.width,
-          frame.height,
-          { success: false, translationX: 0, translationY: 0, rotationDeg: 0, scale: 1, confidence: 0, matchedAnchorCount: 0, totalAnchorCount: anchors.length, anchorPositions: [] },
-          masterWidth,
-          masterHeight
-        );
+        const expected = this.mapMasterPointToFrame({ x: anchor.x, y: anchor.y }, frame.width, frame.height, masterWidth, masterHeight);
 
         // First pass uses the configured master location. After a provisional
         // transform exists, a second pass searches around the transformed
@@ -366,6 +359,27 @@ export class AlignmentEngine {
     return { x: bestX, y: bestY, confidence };
   }
 
+  private mapMasterPointToFrame(
+    masterPoint: Position2D,
+    frameWidth: number,
+    frameHeight: number,
+    masterWidth: number,
+    masterHeight: number
+  ): Position2D {
+    const safeMasterWidth = Math.max(1, masterWidth);
+    const safeMasterHeight = Math.max(1, masterHeight);
+    const containScale = Math.min(frameWidth / safeMasterWidth, frameHeight / safeMasterHeight);
+    const renderedWidth = safeMasterWidth * containScale;
+    const renderedHeight = safeMasterHeight * containScale;
+    const offsetX = (frameWidth - renderedWidth) / 2;
+    const offsetY = (frameHeight - renderedHeight) / 2;
+
+    return {
+      x: offsetX + masterPoint.x * renderedWidth,
+      y: offsetY + masterPoint.y * renderedHeight,
+    };
+  }
+
   public transformMasterPoint(
     masterPoint: Position2D,
     frameWidth: number,
@@ -377,15 +391,13 @@ export class AlignmentEngine {
     // Map the normalized master point through the actual master aspect ratio
     // before applying alignment. This is the key guard against the legacy
     // 800x600 stretch: a 16:9 master is never treated as a 4:3 image.
-    const safeMasterWidth = Math.max(1, masterWidth);
-    const safeMasterHeight = Math.max(1, masterHeight);
-    const containScale = Math.min(frameWidth / safeMasterWidth, frameHeight / safeMasterHeight);
-    const renderedWidth = safeMasterWidth * containScale;
-    const renderedHeight = safeMasterHeight * containScale;
-    const offsetX = (frameWidth - renderedWidth) / 2;
-    const offsetY = (frameHeight - renderedHeight) / 2;
-    const sourceX = offsetX + masterPoint.x * renderedWidth;
-    const sourceY = offsetY + masterPoint.y * renderedHeight;
+    const { x: sourceX, y: sourceY } = this.mapMasterPointToFrame(
+      masterPoint,
+      frameWidth,
+      frameHeight,
+      masterWidth,
+      masterHeight
+    );
 
     if (!alignment.success) {
       return { x: sourceX, y: sourceY };
