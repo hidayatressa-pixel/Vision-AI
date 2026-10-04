@@ -133,6 +133,20 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     img.decoding = 'async';
     img.onload = () => {
       if (img.naturalWidth === 0 || img.naturalHeight === 0) return;
+
+      // The master image is the calibration coordinate system. Never distort it
+      // into the legacy 800x600 canvas. If an older master still carries 800x600
+      // metadata, migrate the dimensions to the actual uploaded image once it is
+      // loaded; normalized ROIs/anchors remain unchanged.
+      if (editedRevision.masterWidth !== img.naturalWidth || editedRevision.masterHeight !== img.naturalHeight) {
+        setEditedRevision((prev) => ({
+          ...prev,
+          masterWidth: img.naturalWidth,
+          masterHeight: img.naturalHeight,
+        }));
+        return;
+      }
+
       ctx.clearRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
       drawOverlay();
@@ -230,10 +244,18 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      setEditedRevision((prev) => ({
-        ...prev,
-        masterImageUrl: String(reader.result || ''),
-      }));
+      const dataUrl = String(reader.result || '');
+      const img = new Image();
+      img.onload = () => {
+        if (!img.naturalWidth || !img.naturalHeight) return;
+        setEditedRevision((prev) => ({
+          ...prev,
+          masterImageUrl: dataUrl,
+          masterWidth: img.naturalWidth,
+          masterHeight: img.naturalHeight,
+        }));
+      };
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
   };
