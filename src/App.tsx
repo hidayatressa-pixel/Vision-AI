@@ -71,8 +71,8 @@ export default function App() {
     const newProduct: MasterProduct = {
       id: productId,
       productCode: `PRD-CHASSIS-${String(newIdx).padStart(2, '0')}`,
-      productName: `Product ${String.fromCharCode(65 + newIdx - 1)} · 6-Screw Module`,
-      description: 'New master cloned from the six-screw baseline.', activeRevisionId: revisionId, isActive: true,
+      productName: `Product ${String.fromCharCode(65 + newIdx - 1)} · 8-Screw Module`,
+      description: 'New master cloned from the latest eight-screw production baseline.', activeRevisionId: revisionId, isActive: true,
       createdAt: now, updatedAt: now, createdBy: 'System Engineer',
       revisions: [{ ...baseRevision, id: revisionId, masterId: productId, revisionCode: 'REV-01', revisionNote: 'Initial production baseline', createdAt: now, updatedAt: now }],
     };
