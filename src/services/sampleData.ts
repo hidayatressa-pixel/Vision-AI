@@ -94,8 +94,9 @@ export const SEED_PRODUCT_A: MasterProduct = {
   id: 'prd-bracket-m4',
   productCode: 'PRD-BRACKET-M4',
   productName: 'Product A · M4 Bracket',
-  description: 'Dummy production master with 6 required screws and four alignment fiducials.',
-  activeRevisionId: 'rev-01-6screw',
+  description: 'Production master with 8 required screws and four alignment fiducials.'
+  // Latest engineering revision is the active line configuration: 8 screws.
+  activeRevisionId: 'rev-02-8screw',
   isActive: true,
   createdAt: '2026-10-01T08:00:00Z',
   updatedAt: '2026-10-01T08:00:00Z',
