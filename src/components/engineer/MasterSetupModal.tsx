@@ -39,6 +39,7 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDraggingRef = useRef<boolean>(false);
+  const activePointerIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     setEditedRevision({ ...revision });
@@ -101,15 +102,16 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
         const x = roi.x * w;
         const y = roi.y * h;
         const selected = selectedItemType === 'ROI' && selectedId === roi.id;
-        ctx.strokeStyle = selected ? '#f59e0b' : '#10b981';
+        // Blue = nominal/OK position. Yellow = absolute tolerance boundary.
+        ctx.strokeStyle = selected ? '#60a5fa' : '#3b82f6';
         ctx.lineWidth = selected ? 3 : 2;
         ctx.beginPath();
         ctx.arc(x, y, 22, 0, Math.PI * 2);
         ctx.stroke();
 
         const toleranceRadius = editedRevision.tolerance.maxPositionOffsetPx || 25;
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2;
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.arc(x, y, toleranceRadius, 0, Math.PI * 2);
@@ -117,7 +119,7 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
         ctx.setLineDash([]);
 
         ctx.font = 'bold 11px monospace';
-        ctx.fillStyle = selected ? '#f59e0b' : '#10b981';
+        ctx.fillStyle = selected ? '#93c5fd' : '#60a5fa';
         ctx.textAlign = 'center';
         ctx.fillText(roi.name, x, y + 36);
       }
@@ -149,17 +151,24 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     img.src = imageUrl;
   }, [editedRevision, isOpen, selectedId, selectedItemType]);
 
+  // Pointer events make the editor work with both mouse and touchscreen.
+  const getCanvasPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+
   // Handle canvas click to drag/select anchor or ROI
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const clickX = (e.clientX - rect.left) * scaleX;
-    const clickY = (e.clientY - rect.top) * scaleY;
+    const { x: clickX, y: clickY } = getCanvasPoint(e);
+    canvas.setPointerCapture(e.pointerId);
+    activePointerIdRef.current = e.pointerId;
 
     // Check Anchors first
     for (const a of editedRevision.anchors) {
@@ -186,17 +195,12 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     }
   };
 
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDraggingRef.current) return;
+  const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDraggingRef.current || activePointerIdRef.current !== e.pointerId) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const clickX = (e.clientX - rect.left) * scaleX;
-    const clickY = (e.clientY - rect.top) * scaleY;
+    const { x: clickX, y: clickY } = getCanvasPoint(e);
 
     const normX = Math.max(0.05, Math.min(0.95, clickX / canvas.width));
     const normY = Math.max(0.05, Math.min(0.95, clickY / canvas.height));
@@ -216,8 +220,10 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     }
   };
 
-  const handleCanvasMouseUp = () => {
+  const handleCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     isDraggingRef.current = false;
+    activePointerIdRef.current = null;
+    try { canvasRef.current?.releasePointerCapture(e.pointerId); } catch { /* no-op */ }
   };
 
   const handleReplaceMasterImage = (file: File | null) => {
@@ -345,9 +351,11 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
               {editedRevision.masterImageUrl ? (
                 <canvas
                   ref={canvasRef}
-                  onMouseDown={handleCanvasMouseDown}
-                  onMouseMove={handleCanvasMouseMove}
-                  onMouseUp={handleCanvasMouseUp}
+                  onPointerDown={handleCanvasPointerDown}
+                  onPointerMove={handleCanvasPointerMove}
+                  onPointerUp={handleCanvasPointerUp}
+                  onPointerCancel={handleCanvasPointerUp}
+                  style={{ touchAction: 'none' }}
                   className="w-full h-full object-contain cursor-crosshair"
                 />
               ) : (
@@ -437,6 +445,17 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
               </label>
             </div>
 
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2">
+              <div className="flex items-center gap-2 text-[10px] font-mono text-slate-300">
+                <span className="inline-block h-3 w-3 rounded-full border-2 border-blue-500"></span>
+                BLUE = nominal / OK position
+              </div>
+              <div className="flex items-center gap-2 text-[10px] font-mono text-slate-300">
+                <span className="inline-block h-3 w-3 rounded-full border-2 border-yellow-400 border-dashed"></span>
+                YELLOW = absolute tolerance boundary
+              </div>
+              <div className="text-[10px] font-mono text-cyan-300">Drag any blue point to match the actual screw.</div>
+            </div>
             <div className="text-xs font-mono text-slate-400 flex items-center justify-between">
               <span>Master image = layout/alignment reference. Close-up references = visual evidence for each inspection point.</span>
               <span className="text-cyan-400">Master Res: {editedRevision.masterWidth}x{editedRevision.masterHeight}</span>
