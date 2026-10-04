@@ -30,12 +30,15 @@ export class AlignmentEngine {
       };
     }
 
-    if (anchors.length < 2) {
+    // Industrial alignment uses the 4 configured fiducials. Three are the minimum
+    // required for a stable similarity transform while still tolerating one
+    // temporarily occluded/missed anchor.
+    if (anchors.length < 3) {
       return {
         success: false, translationX: 0, translationY: 0, rotationDeg: 0,
         scale: 1, confidence: 0, matchedAnchorCount: 0,
         totalAnchorCount: anchors.length, anchorPositions: [],
-        errorMessage: `At least 2 reference anchors are required (${anchors.length} configured)`,
+        errorMessage: `At least 3 reference anchors are required (${anchors.length} configured)`,
       };
     }
 
@@ -50,42 +53,84 @@ export class AlignmentEngine {
 
     const edges = sobelEdges(frame);
 
-    const matchedAnchors: Array<{
+    type AnchorMatch = {
       id: string;
       expected: Position2D;
       found: Position2D;
       confidence: number;
-    }> = [];
+    };
 
-    for (const anchor of anchors) {
-      const expPx = anchor.x * frame.width;
-      const expPy = anchor.y * frame.height;
+    const findMatches = (
+      centers?: Map<string, Position2D>,
+      radiusMultiplier = 1
+    ): AnchorMatch[] => {
+      const matches: AnchorMatch[] = [];
 
-      const radius = Math.max(
-        15,
-        anchor.searchRadius * Math.min(frame.width, frame.height)
-      );
+      for (const anchor of anchors) {
+        const expected = {
+          x: anchor.x * frame.width,
+          y: anchor.y * frame.height,
+        };
 
-      const x0 = Math.max(0, Math.floor(expPx - radius));
-      const y0 = Math.max(0, Math.floor(expPy - radius));
-      const x1 = Math.min(frame.width - 1, Math.ceil(expPx + radius));
-      const y1 = Math.min(frame.height - 1, Math.ceil(expPy + radius));
+        // First pass uses the configured master location. After a provisional
+        // transform exists, a second pass searches around the transformed
+        // location. This is important when a new part is placed off-center:
+        // the first coarse match only needs to find the fiducials, then the
+        // refinement follows the actual part position.
+        const center = centers?.get(anchor.id) || expected;
+        const radius = Math.max(
+          15,
+          anchor.searchRadius * Math.min(frame.width, frame.height) * radiusMultiplier
+        );
 
-      const found = this.locateAnchorFeature(
-        frame, edges, expPx, expPy, x0, y0, x1, y1, anchor.patchRadius
-      );
+        const x0 = Math.max(0, Math.floor(center.x - radius));
+        const y0 = Math.max(0, Math.floor(center.y - radius));
+        const x1 = Math.min(frame.width - 1, Math.ceil(center.x + radius));
+        const y1 = Math.min(frame.height - 1, Math.ceil(center.y + radius));
 
-      if (found.confidence >= 0.35) {
-        matchedAnchors.push({
-          id: anchor.id,
-          expected: { x: expPx, y: expPy },
-          found: { x: found.x, y: found.y },
-          confidence: found.confidence,
-        });
+        const found = this.locateAnchorFeature(
+          frame, edges, center.x, center.y, x0, y0, x1, y1, anchor.patchRadius
+        );
+
+        if (found.confidence >= 0.35) {
+          matches.push({
+            id: anchor.id,
+            expected,
+            found: { x: found.x, y: found.y },
+            confidence: found.confidence,
+          });
+        }
+      }
+
+      return matches;
+    };
+
+    let matchedAnchors = findMatches();
+
+    // Coarse alignment is followed by a tighter, transform-guided search.
+    // This prevents the detector from remaining biased toward the old camera
+    // position when the previous product was removed and another one is placed
+    // at a different position in the fixture.
+    if (matchedAnchors.length >= 3) {
+      const provisional = this.fitSimilarityTransform(matchedAnchors);
+      if (provisional) {
+        const predictedCenters = new Map<string, Position2D>();
+        for (const anchor of anchors) {
+          const expected = {
+            x: anchor.x * frame.width,
+            y: anchor.y * frame.height,
+          };
+          predictedCenters.set(anchor.id, this.applyTransform(expected, provisional));
+        }
+
+        const refined = findMatches(predictedCenters, 0.55);
+        if (refined.length >= 3) {
+          matchedAnchors = refined;
+        }
       }
     }
 
-    if (matchedAnchors.length < 2) {
+    if (matchedAnchors.length < 3) {
       return {
         success: false, translationX: 0, translationY: 0, rotationDeg: 0,
         scale: 1,
@@ -97,37 +142,8 @@ export class AlignmentEngine {
       };
     }
 
-    const N = matchedAnchors.length;
-    let sumSrcX = 0, sumSrcY = 0, sumDstX = 0, sumDstY = 0;
-
-    for (const match of matchedAnchors) {
-      sumSrcX += match.expected.x;
-      sumSrcY += match.expected.y;
-      sumDstX += match.found.x;
-      sumDstY += match.found.y;
-    }
-
-    const meanSrcX = sumSrcX / N;
-    const meanSrcY = sumSrcY / N;
-    const meanDstX = sumDstX / N;
-    const meanDstY = sumDstY / N;
-
-    let num = 0;
-    let den = 0;
-    let sourceVariance = 0;
-
-    for (const match of matchedAnchors) {
-      const sx = match.expected.x - meanSrcX;
-      const sy = match.expected.y - meanSrcY;
-      const dx = match.found.x - meanDstX;
-      const dy = match.found.y - meanDstY;
-
-      num += sx * dy - sy * dx;
-      den += sx * dx + sy * dy;
-      sourceVariance += sx * sx + sy * sy;
-    }
-
-    if (sourceVariance <= 1e-6) {
+    const fitted = this.fitSimilarityTransform(matchedAnchors);
+    if (!fitted) {
       return {
         success: false, translationX: 0, translationY: 0, rotationDeg: 0,
         scale: 1, confidence: 0,
@@ -138,37 +154,21 @@ export class AlignmentEngine {
       };
     }
 
-    const angleRad = Math.atan2(num, den);
-    const rotationDeg = (angleRad * 180) / Math.PI;
-    const cosA = Math.cos(angleRad);
-    const sinA = Math.sin(angleRad);
-    const correlationMagnitude = Math.sqrt(den * den + num * num);
-    const scale = correlationMagnitude / sourceVariance;
-
-    const transformedMeanX =
-      scale * (cosA * meanSrcX - sinA * meanSrcY);
-    const transformedMeanY =
-      scale * (sinA * meanSrcX + cosA * meanSrcY);
-
-    const translationX = meanDstX - transformedMeanX;
-    const translationY = meanDstY - transformedMeanY;
+    const {
+      rotationDeg,
+      scale,
+      translationX,
+      translationY,
+    } = fitted;
 
     let squaredResidual = 0;
 
     for (const match of matchedAnchors) {
-      const predictedX =
-        scale * (cosA * match.expected.x - sinA * match.expected.y) +
-        translationX;
-      const predictedY =
-        scale * (sinA * match.expected.x + cosA * match.expected.y) +
-        translationY;
-
-      const residual = Math.hypot(
-        predictedX - match.found.x,
-        predictedY - match.found.y
-      );
-
-      squaredResidual += residual * residual;
+      const predicted = this.applyTransform(match.expected, fitted);
+      squaredResidual += Math.hypot(
+        predicted.x - match.found.x,
+        predicted.y - match.found.y
+      ) ** 2;
     }
 
     const rmsResidual = Math.sqrt(
@@ -184,7 +184,8 @@ export class AlignmentEngine {
 
     const minScale = tolerance.minScale ?? 0.80;
     const maxScale = tolerance.maxScale ?? 1.20;
-    const maxResidualPx = tolerance.maxAlignmentResidualPx ?? Math.max(tolerance.maxPositionOffsetPx * 2, 10);
+    const maxResidualPx = tolerance.maxAlignmentResidualPx ??
+      Math.max(tolerance.maxPositionOffsetPx * 2, 10);
 
     const rotationOk = Math.abs(rotationDeg) <= maxRotation;
     const confidenceOk = meanConfidence >= minConfidence;
@@ -221,6 +222,69 @@ export class AlignmentEngine {
       totalAnchorCount: anchors.length,
       anchorPositions: matchedAnchors,
       errorMessage,
+    };
+  }
+
+  private fitSimilarityTransform(
+    matches: Array<{ expected: Position2D; found: Position2D }>
+  ): {
+    rotationDeg: number;
+    scale: number;
+    translationX: number;
+    translationY: number;
+  } | null {
+    if (matches.length < 2) return null;
+
+    const n = matches.length;
+    const sourceMean = matches.reduce(
+      (acc, m) => ({ x: acc.x + m.expected.x / n, y: acc.y + m.expected.y / n }),
+      { x: 0, y: 0 }
+    );
+    const targetMean = matches.reduce(
+      (acc, m) => ({ x: acc.x + m.found.x / n, y: acc.y + m.found.y / n }),
+      { x: 0, y: 0 }
+    );
+
+    let num = 0;
+    let den = 0;
+    let variance = 0;
+
+    for (const match of matches) {
+      const sx = match.expected.x - sourceMean.x;
+      const sy = match.expected.y - sourceMean.y;
+      const dx = match.found.x - targetMean.x;
+      const dy = match.found.y - targetMean.y;
+      num += sx * dy - sy * dx;
+      den += sx * dx + sy * dy;
+      variance += sx * sx + sy * sy;
+    }
+
+    if (variance <= 1e-6) return null;
+
+    const angle = Math.atan2(num, den);
+    const scale = Math.sqrt(den * den + num * num) / variance;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    return {
+      rotationDeg: (angle * 180) / Math.PI,
+      scale,
+      translationX: targetMean.x - scale * (cosA * sourceMean.x - sinA * sourceMean.y),
+      translationY: targetMean.y - scale * (sinA * sourceMean.x + cosA * sourceMean.y),
+    };
+  }
+
+  private applyTransform(
+    point: Position2D,
+    transform: { rotationDeg: number; scale: number; translationX: number; translationY: number }
+  ): Position2D {
+    const rad = (transform.rotationDeg * Math.PI) / 180;
+    const cosA = Math.cos(rad);
+    const sinA = Math.sin(rad);
+
+    return {
+      x: transform.scale * (cosA * point.x - sinA * point.y) + transform.translationX,
+      y: transform.scale * (sinA * point.x + cosA * point.y) + transform.translationY,
     };
   }
 
