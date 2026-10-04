@@ -285,6 +285,7 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     if (editedRevision.anchors.length !== 4) errors.push('Exactly 4 alignment anchors are required.');
     if (editedRevision.inspectionROIs.length !== 8) errors.push('Exactly 8 screw inspection ROIs are required.');
     if (!editedRevision.masterImageUrl || !editedRevision.masterImageUrl.trim()) errors.push('A master image is required.');
+    if (editedRevision.masterWidth <= 0 || editedRevision.masterHeight <= 0) errors.push('Master dimensions are invalid. Re-upload the approved master image so its native resolution can be captured.');
     const references = editedRevision.referenceImages || [];
     if (references.length !== 6) {
       errors.push(`Exactly 6 master reference images are required (${references.length}/6 configured).`);
