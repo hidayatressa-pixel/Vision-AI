@@ -128,7 +128,23 @@ export const SEED_PRODUCT_A: MasterProduct = {
 export async function initSeedDataIfEmpty() {
   const { dbService } = await import('./db');
   const existing = await dbService.getAllMasters();
+
   if (existing.length === 0) {
     await dbService.saveMaster(SEED_PRODUCT_A);
+    return;
+  }
+
+  // Migrate the original seeded Product A to the latest 8-screw revision.
+  // This is intentionally limited to the known seed ID so engineering-created
+  // masters/revisions remain under operator control.
+  const seeded = existing.find((master) => master.id === SEED_PRODUCT_A.id);
+  const latestRevision = seeded?.revisions.find((revision) => revision.id === 'rev-02-8screw');
+
+  if (seeded && latestRevision && seeded.activeRevisionId !== latestRevision.id) {
+    await dbService.saveMaster({
+      ...seeded,
+      activeRevisionId: latestRevision.id,
+      updatedAt: new Date().toISOString(),
+    });
   }
 }
