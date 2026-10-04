@@ -163,10 +163,13 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
       ctx.fillStyle = ctx.strokeStyle;
       ctx.fillText('DETECTION ZONE', dzX + 8, dzY + 16);
 
-      // 2. Draw Reference Anchors
+      // 2. Draw Reference Anchors. After alignment, show the actual detected
+      // anchor positions so the HUD uses the same coordinate transform as the
+      // vision engine. Before alignment, show the nominal master positions.
       for (const anchor of activeRevision.anchors) {
-        const ax = anchor.x * w;
-        const ay = anchor.y * h;
+        const matched = latestAlignment?.anchorPositions?.find((item) => item.id === anchor.id);
+        const ax = matched ? matched.found.x : anchor.x * w;
+        const ay = matched ? matched.found.y : anchor.y * h;
 
         // Crosshair
         ctx.strokeStyle = '#38bdf8';
@@ -272,6 +275,7 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
     latestExtraObjects,
     latestRoiResults,
     showOverlays,
+    videoDimensions,
     state,
   ]);
 
