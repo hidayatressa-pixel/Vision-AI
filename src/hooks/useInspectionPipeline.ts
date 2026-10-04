@@ -188,7 +188,7 @@ export function useInspectionPipeline({
         );
 
         const roiStart = performance.now();
-        const inspection = roiInspector.inspectROIs(
+        const inspection = await roiInspector.inspectROIs(
           gray,
           revision.inspectionROIs,
           alignment,
