@@ -21,6 +21,8 @@ export class PresenceDetector {
   private isCurrentlyPresent: boolean = false;
   private hasInspectedCurrentPart: boolean = false;
   private postInspectionMotionFrames: number = 0;
+  private postInspectionChangeFrames: number = 0;
+  private inspectedPartStats: { mean: number; variance: number } | null = null;
 
   public setBaseline(stats: { mean: number; variance: number }) {
     this.baselineStats = stats;
@@ -30,13 +32,29 @@ export class PresenceDetector {
     this.isCurrentlyPresent = false;
     this.hasInspectedCurrentPart = false;
     this.postInspectionMotionFrames = 0;
+    this.postInspectionChangeFrames = 0;
+    this.inspectedPartStats = null;
     this.stabilizationStartTime = null;
     this.prevFrame = null;
   }
 
-  public markPartInspected() {
+  public markPartInspected(
+    inspectedFrame?: GrayscaleImage,
+    detectionZone?: Box2D
+  ) {
     this.hasInspectedCurrentPart = true;
     this.postInspectionMotionFrames = 0;
+    this.postInspectionChangeFrames = 0;
+
+    if (inspectedFrame && detectionZone) {
+      const rx = detectionZone.x * inspectedFrame.width;
+      const ry = detectionZone.y * inspectedFrame.height;
+      const rw = detectionZone.width * inspectedFrame.width;
+      const rh = detectionZone.height * inspectedFrame.height;
+      this.inspectedPartStats = getRegionStats(inspectedFrame, rx, ry, rw, rh);
+    } else {
+      this.inspectedPartStats = null;
+    }
   }
 
   /**
@@ -62,9 +80,15 @@ export class PresenceDetector {
       this.postInspectionMotionFrames = Math.max(0, this.postInspectionMotionFrames - 1);
     }
 
+    // Also allow a replacement part to re-arm when it was swapped while the
+    // camera saw little frame-to-frame motion. This compares the current
+    // detection-zone statistics with the frame that produced the last judgement.
+    // It avoids keeping an old OK/NG latched simply because the operator changed
+    // the part between two visually similar frames.
     // Require two consecutive high-motion frames to avoid a single noisy frame
-    // instantly clearing a valid judgement.
-    return this.postInspectionMotionFrames >= 2;
+    // instantly clearing a valid judgement. The frame-change path is updated
+    // inside processFrame(), where the detection-zone bounds are available.
+    return this.postInspectionMotionFrames >= 2 || this.postInspectionChangeFrames >= 2;
   }
 
   /**
@@ -75,6 +99,8 @@ export class PresenceDetector {
   public rearmCurrentPart(now: number = Date.now()) {
     this.hasInspectedCurrentPart = false;
     this.postInspectionMotionFrames = 0;
+    this.postInspectionChangeFrames = 0;
+    this.inspectedPartStats = null;
     this.stabilizationStartTime = now;
   }
 
@@ -102,6 +128,26 @@ export class PresenceDetector {
     // 2. Motion delta from previous frame
     const motion = calculateMotionDelta(currentFrame, this.prevFrame, detectionZone);
     this.prevFrame = currentFrame;
+
+    if (this.hasInspectedCurrentPart && this.inspectedPartStats) {
+      const meanDiff = Math.abs(stats.mean - this.inspectedPartStats.mean);
+      const stdDiff =
+        Math.abs(Math.sqrt(stats.variance) - Math.sqrt(this.inspectedPartStats.variance));
+      const replacementScore = meanDiff * 0.7 + stdDiff * 0.8;
+      const replacementThreshold = Math.max(
+        10,
+        (tolerance.detectionZonePresenceThreshold || 18) * 0.55
+      );
+
+      if (replacementScore >= replacementThreshold) {
+        this.postInspectionChangeFrames++;
+      } else {
+        this.postInspectionChangeFrames = Math.max(
+          0,
+          this.postInspectionChangeFrames - 1
+        );
+      }
+    }
 
     // 3. Presence calculation
     // A workpiece on an inspection stand changes variance (edges/features) and mean brightness
