@@ -169,9 +169,20 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
   const getCanvasPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
+
+    // The canvas uses object-contain. Its CSS box can be wider/taller than the
+    // actual rendered image, so mapping directly from rect -> canvas pixels
+    // introduces a coordinate drift whenever master and editor aspect ratios
+    // differ. Convert through the real contained image rectangle instead.
+    const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+    const renderedWidth = canvas.width * scale;
+    const renderedHeight = canvas.height * scale;
+    const offsetX = (rect.width - renderedWidth) / 2;
+    const offsetY = (rect.height - renderedHeight) / 2;
+
     return {
-      x: (e.clientX - rect.left) * (canvas.width / rect.width),
-      y: (e.clientY - rect.top) * (canvas.height / rect.height),
+      x: (e.clientX - rect.left - offsetX) / scale,
+      y: (e.clientY - rect.top - offsetY) / scale,
     };
   };
 
