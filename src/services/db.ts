@@ -1,153 +1,144 @@
 /**
- * IndexedDB Database Service for Realtime Vision Inspection
- * Provides offline-first asynchronous persistence, query, and sync queue.
+ * Persistence service for Vision-AI.
+ *
+ * Master configuration remains local to the station for now. Inspection history
+ * is cloud-first and is stored in Supabase/PostgREST so every device sees the
+ * same history. No service-role key is ever used in the browser.
  */
 
 import { InspectionRecord, InspectionStats } from '../types/inspection';
 import { MasterProduct } from '../types/master';
 
-const DB_NAME = 'vision_inspection_db';
-const DB_VERSION = 1;
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+const HISTORY_TABLE = 'inspection_history';
 
 class DatabaseService {
-  private db: IDBDatabase | null = null;
-  private dbInitPromise: Promise<IDBDatabase> | null = null;
+  private getCloudConfig() {
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      throw new Error(
+        'Cloud database is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.'
+      );
+    }
+    return { url: `${SUPABASE_URL}/rest/v1/${HISTORY_TABLE}`, key: SUPABASE_KEY };
+  }
 
-  public async getDb(): Promise<IDBDatabase> {
-    if (this.db) return this.db;
-    if (this.dbInitPromise) return this.dbInitPromise;
-
-    this.dbInitPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-
-        // Inspection results store
-        if (!db.objectStoreNames.contains('inspections')) {
-          const inspStore = db.createObjectStore('inspections', { keyPath: 'id' });
-          inspStore.createIndex('timestamp', 'timestamp', { unique: false });
-          inspStore.createIndex('productId', 'productId', { unique: false });
-          inspStore.createIndex('judgement', 'judgement', { unique: false });
-          inspStore.createIndex('syncedToCloud', 'syncedToCloud', { unique: false });
-        }
-
-        // Master products store
-        if (!db.objectStoreNames.contains('masters')) {
-          const masterStore = db.createObjectStore('masters', { keyPath: 'id' });
-          masterStore.createIndex('productCode', 'productCode', { unique: true });
-        }
-
-        // Offline sync queue
-        if (!db.objectStoreNames.contains('sync_queue')) {
-          const queueStore = db.createObjectStore('sync_queue', { keyPath: 'id', autoIncrement: true });
-          queueStore.createIndex('timestamp', 'timestamp', { unique: false });
-        }
-      };
-
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
-      };
-
-      request.onerror = () => {
-        reject(request.error);
-      };
+  private async request<T = unknown>(path = '', init: RequestInit = {}): Promise<T> {
+    const config = this.getCloudConfig();
+    const response = await fetch(`${config.url}${path}`, {
+      ...init,
+      headers: {
+        apikey: config.key,
+        Authorization: `Bearer ${config.key}`,
+        'Content-Type': 'application/json',
+        ...init.headers,
+      },
     });
 
-    return this.dbInitPromise;
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`Cloud database error ${response.status}: ${body || response.statusText}`);
+    }
+
+    if (response.status === 204) return undefined as T;
+    return response.json() as Promise<T>;
   }
 
   // --- Master Operations ---
+  // Master configuration is intentionally kept station-local until the
+  // approved source-controlled master asset package is bundled.
+  private masterCache = new Map<string, MasterProduct>();
 
   public async getAllMasters(): Promise<MasterProduct[]> {
-    const db = await this.getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('masters', 'readonly');
-      const store = tx.objectStore('masters');
-      const req = store.getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
+    return Array.from(this.masterCache.values());
   }
 
   public async getMasterById(id: string): Promise<MasterProduct | null> {
-    const db = await this.getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('masters', 'readonly');
-      const store = tx.objectStore('masters');
-      const req = store.get(id);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
+    return this.masterCache.get(id) || null;
   }
 
   public async deleteMaster(id: string): Promise<void> {
-    const db = await this.getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('masters', 'readwrite');
-      const request = tx.objectStore('masters').delete(id);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    this.masterCache.delete(id);
   }
 
   public async saveMaster(master: MasterProduct): Promise<void> {
-    const db = await this.getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('masters', 'readwrite');
-      const store = tx.objectStore('masters');
-      const req = store.put(master);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
+    this.masterCache.set(master.id, master);
   }
 
-  // --- Inspection Result Operations ---
+  // --- Cloud Inspection History ---
+
+  private toCloudRecord(record: InspectionRecord) {
+    return {
+      id: record.id,
+      timestamp: record.timestamp,
+      product_id: record.productId,
+      product_code: record.productCode,
+      product_name: record.productName,
+      master_id: record.masterId,
+      master_revision_id: record.masterRevisionId,
+      master_revision_code: record.masterRevisionCode,
+      judgement: record.judgement,
+      expected_count: record.expectedCount,
+      detected_count: record.detectedCount,
+      defects: record.defects,
+      primary_reason: record.primaryReason,
+      metrics: record.metrics,
+      alignment: record.alignment,
+      roi_results: record.roiResults,
+      extra_objects: record.extraObjects,
+      thumbnail_base64: record.thumbnailBase64 || null,
+      device_id: record.deviceId,
+      operator_id: record.operatorId || null,
+      sequence_number: record.sequenceNumber ?? null,
+      plc_interlock_state: record.plcInterlockState || null,
+      plc_comm_latency_ms: record.plcCommLatencyMs ?? null,
+      plc_timeline: record.plcTimeline || null,
+    };
+  }
+
+  private fromCloudRecord(row: any): InspectionRecord {
+    return {
+      id: row.id,
+      timestamp: row.timestamp,
+      productId: row.product_id,
+      productCode: row.product_code,
+      productName: row.product_name,
+      masterId: row.master_id,
+      masterRevisionId: row.master_revision_id,
+      masterRevisionCode: row.master_revision_code,
+      judgement: row.judgement,
+      expectedCount: row.expected_count,
+      detectedCount: row.detected_count,
+      defects: row.defects || [],
+      primaryReason: row.primary_reason || '',
+      metrics: row.metrics || {},
+      alignment: row.alignment || {},
+      roiResults: row.roi_results || [],
+      extraObjects: row.extra_objects || [],
+      thumbnailBase64: row.thumbnail_base64 || undefined,
+      deviceId: row.device_id,
+      operatorId: row.operator_id || undefined,
+      syncedToCloud: true,
+      sequenceNumber: row.sequence_number ?? undefined,
+      plcInterlockState: row.plc_interlock_state || undefined,
+      plcCommLatencyMs: row.plc_comm_latency_ms ?? undefined,
+      plcTimeline: row.plc_timeline || undefined,
+    };
+  }
 
   public async saveInspectionRecord(record: InspectionRecord): Promise<void> {
-    const db = await this.getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(['inspections', 'sync_queue'], 'readwrite');
-      const inspStore = tx.objectStore('inspections');
-      const queueStore = tx.objectStore('sync_queue');
-
-      inspStore.put(record);
-
-      if (!record.syncedToCloud) {
-        queueStore.add({
-          inspectionId: record.id,
-          timestamp: record.timestamp,
-          payload: record,
-        });
-      }
-
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+    await this.request('', {
+      method: 'POST',
+      headers: {
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify(this.toCloudRecord(record)),
     });
   }
 
   public async getRecentInspections(limit = 500): Promise<InspectionRecord[]> {
-    const db = await this.getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('inspections', 'readonly');
-      const store = tx.objectStore('inspections');
-      const index = store.index('timestamp');
-      const req = index.openCursor(null, 'prev');
-      const results: InspectionRecord[] = [];
-
-      req.onsuccess = () => {
-        const cursor = req.result;
-        if (cursor && results.length < limit) {
-          results.push(cursor.value);
-          cursor.continue();
-        } else {
-          resolve(results);
-        }
-      };
-
-      req.onerror = () => reject(req.error);
-    });
+    const rows = await this.request<any[]>(`?select=*&order=timestamp.desc&limit=${Math.max(1, Math.min(limit, 5000))}`);
+    return rows.map((row) => this.fromCloudRecord(row));
   }
 
   public async getFilteredInspections(filters: {
@@ -156,8 +147,8 @@ class DatabaseService {
     search?: string;
     limit?: number;
   }): Promise<InspectionRecord[]> {
-    const all = await this.getRecentInspections(filters.limit || 1000);
-    return all.filter((item) => {
+    const records = await this.getRecentInspections(filters.limit || 1000);
+    return records.filter((item) => {
       if (filters.productId && item.productId !== filters.productId) return false;
       if (filters.judgement && filters.judgement !== 'ALL' && item.judgement !== filters.judgement) return false;
       if (filters.search) {
@@ -174,99 +165,45 @@ class DatabaseService {
   }
 
   public async getStats(): Promise<InspectionStats> {
-    const records = await this.getRecentInspections(1000);
+    const records = await this.getRecentInspections(5000);
     let totalOk = 0;
     let totalNg = 0;
     let totalErrors = 0;
     let totalCycleSum = 0;
 
-    for (const r of records) {
-      if (r.judgement === 'OK') totalOk++;
-      else if (r.judgement === 'NG') totalNg++;
+    for (const record of records) {
+      if (record.judgement === 'OK') totalOk++;
+      else if (record.judgement === 'NG') totalNg++;
       else totalErrors++;
-
-      totalCycleSum += r.metrics?.totalCycleMs || 0;
+      totalCycleSum += record.metrics?.totalCycleMs || 0;
     }
 
     const totalInspected = records.length;
-    const yieldRate = totalInspected > 0 ? (totalOk / totalInspected) * 100 : 100;
-    const lastCycleTimeMs = records[0]?.metrics?.totalCycleMs || 0;
-    const averageCycleTimeMs = totalInspected > 0 ? Math.round(totalCycleSum / totalInspected) : 0;
-
     return {
       totalInspected,
       totalOk,
       totalNg,
       totalErrors,
-      yieldRate,
-      lastCycleTimeMs,
-      averageCycleTimeMs,
+      yieldRate: totalInspected > 0 ? (totalOk / totalInspected) * 100 : 100,
+      lastCycleTimeMs: records[0]?.metrics?.totalCycleMs || 0,
+      averageCycleTimeMs: totalInspected > 0 ? Math.round(totalCycleSum / totalInspected) : 0,
     };
   }
 
   public async clearInspectionHistory(): Promise<void> {
-    const db = await this.getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(['inspections', 'sync_queue'], 'readwrite');
-      tx.objectStore('inspections').clear();
-      tx.objectStore('sync_queue').clear();
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+    await this.request('', {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
     });
   }
 
   public async getPendingSyncCount(): Promise<number> {
-    const db = await this.getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('sync_queue', 'readonly');
-      const store = tx.objectStore('sync_queue');
-      const req = store.count();
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
+    // Cloud-first architecture has no local sync queue.
+    return 0;
   }
 
   public async flushSyncQueue(): Promise<{ synced: number }> {
-    const db = await this.getDb();
-    const queueItems = await new Promise<any[]>((resolve, reject) => {
-      const tx = db.transaction('sync_queue', 'readonly');
-      const req = tx.objectStore('sync_queue').getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
-
-    if (queueItems.length === 0) return { synced: 0 };
-
-    // Never delete a local record merely because an endpoint was attempted.
-    // A real deployment must expose POST /api/inspections/sync and return 2xx.
-    const endpoint = '/api/inspections/sync';
-    let synced = 0;
-
-    for (const item of queueItems) {
-      try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item.payload),
-          signal: AbortSignal.timeout(5000),
-        });
-        if (!response.ok) continue;
-
-        const tx = db.transaction(['inspections', 'sync_queue'], 'readwrite');
-        tx.objectStore('inspections').put({ ...item.payload, syncedToCloud: true });
-        tx.objectStore('sync_queue').delete(item.id);
-        await new Promise<void>((resolve, reject) => {
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-          tx.onabort = () => reject(tx.error);
-        });
-        synced++;
-      } catch {
-        // Keep the item queued for the next retry.
-      }
-    }
-
-    return { synced };
+    return { synced: 0 };
   }
 }
 
