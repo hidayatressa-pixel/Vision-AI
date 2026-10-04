@@ -67,7 +67,10 @@ export function useCamera(options: UseCameraOptions = {}) {
   // Initialize camera stream safely without unnecessary teardowns
   const startCamera = useCallback(
     async (deviceId?: string) => {
-      if (isVirtualMode) return;
+      // Do not gate startup on the captured React state here. When the user
+      // switches from simulator to the physical camera, setIsVirtualMode(false)
+      // is asynchronous and this callback can briefly see the previous state.
+      // The effect below is the authoritative starter after the state change.
       if (isStartingRef.current) return;
 
       const targetDevice = deviceId || '';
@@ -180,9 +183,12 @@ export function useCamera(options: UseCameraOptions = {}) {
 
   // Switch to physical camera mode
   const enablePhysicalCamera = useCallback(() => {
+    // Let the state transition trigger the stable startup effect. Calling
+    // startCamera in the same event can race with the old virtual-mode state.
     setIsVirtualMode(false);
-    startCamera(selectedDeviceId);
-  }, [selectedDeviceId, startCamera]);
+    setCameraState('initializing');
+    setErrorMessage('');
+  }, []);
 
   // Only start camera on mount or when switching selectedDeviceId or exiting virtual mode
   useEffect(() => {
