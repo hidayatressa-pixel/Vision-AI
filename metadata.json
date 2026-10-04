@@ -1,6 +1,0 @@
-{
-  "name": "Realtime Vision Inspection System",
-  "description": "Zero-touch manufacturing vision inspection system with automatic part detection, reference alignment, ROI validation, deterministic rules, and offline-first database logging.",
-  "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
