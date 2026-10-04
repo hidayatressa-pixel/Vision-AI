@@ -18,11 +18,11 @@ export class ROIInspector {
     rois: InspectionROI[],
     alignment: AlignmentResult,
     tolerance: ToleranceConfig
-  ): {
+  ): Promise<{
     roiResults: ROIInspectionResult[];
     extraObjects: ExtraDetectedObject[];
     detectedScrewCount: number;
-  } {
+  }> {
     const edges = sobelEdges(frame);
     const minRadiusPx = Math.max(3, Math.round(Math.min(frame.width, frame.height) * 0.008));
     const maxRadiusPx = Math.max(minRadiusPx + 2, Math.round(Math.min(frame.width, frame.height) * 0.055));
