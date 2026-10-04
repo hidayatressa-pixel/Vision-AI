@@ -280,8 +280,18 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     setSaveError(null);
     const tolerance = editedRevision.tolerance;
     const errors: string[] = [];
-    if (editedRevision.anchors.length < 2) errors.push('Minimum 2 reference anchors are required.');
+    if (editedRevision.anchors.length < 3) errors.push('Minimum 3 reference anchors are required for reliable alignment.');
     if (editedRevision.inspectionROIs.length === 0) errors.push('At least 1 inspection ROI is required.');
+    const references = editedRevision.referenceImages || [];
+    if (references.length !== 6) {
+      errors.push(`Exactly 6 master reference images are required (${references.length}/6 configured).`);
+    }
+    if (references.some((reference) => !reference.imageUrl || !reference.imageUrl.trim())) {
+      errors.push('All 6 master reference images must contain a valid image.');
+    }
+    if (new Set(references.map((reference) => reference.id)).size !== references.length) {
+      errors.push('Master reference IDs must be unique.');
+    }
     if (editedRevision.expectedObjectCount !== editedRevision.inspectionROIs.length) {
       errors.push('Expected object count must match the number of inspection ROIs.');
     }
