@@ -199,7 +199,9 @@ export function useInspectionPipeline({
           gray,
           revision.inspectionROIs,
           alignment,
-          revision.tolerance
+          revision.tolerance,
+          revision.masterWidth,
+          revision.masterHeight
         );
 
         roiResults = inspection.roiResults;
