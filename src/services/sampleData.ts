@@ -8,23 +8,23 @@ import { InspectionROI, MasterProduct, ReferenceImage } from '../types/master';
 const masterImage = (fileName: string) => `${import.meta.env.BASE_URL}master-images/${fileName}`;
 
 const sixScrewROIs: InspectionROI[] = [
-  { id: 'roi-screw-1', name: 'Screw #1', objectType: 'screw', x: 0.325, y: 0.3333 },
-  { id: 'roi-screw-2', name: 'Screw #2', objectType: 'screw', x: 0.5, y: 0.3333 },
-  { id: 'roi-screw-3', name: 'Screw #3', objectType: 'screw', x: 0.675, y: 0.3333 },
-  { id: 'roi-screw-4', name: 'Screw #4', objectType: 'screw', x: 0.325, y: 0.6667 },
-  { id: 'roi-screw-5', name: 'Screw #5', objectType: 'screw', x: 0.5, y: 0.6667 },
-  { id: 'roi-screw-6', name: 'Screw #6', objectType: 'screw', x: 0.675, y: 0.6667 },
+  { id: 'roi-screw-1', name: 'Screw #1', objectType: 'screw' as const, x: 0.325, y: 0.3333 },
+  { id: 'roi-screw-2', name: 'Screw #2', objectType: 'screw' as const, x: 0.5, y: 0.3333 },
+  { id: 'roi-screw-3', name: 'Screw #3', objectType: 'screw' as const, x: 0.675, y: 0.3333 },
+  { id: 'roi-screw-4', name: 'Screw #4', objectType: 'screw' as const, x: 0.325, y: 0.6667 },
+  { id: 'roi-screw-5', name: 'Screw #5', objectType: 'screw' as const, x: 0.5, y: 0.6667 },
+  { id: 'roi-screw-6', name: 'Screw #6', objectType: 'screw' as const, x: 0.675, y: 0.6667 },
 ].map((roi) => ({ ...roi, radius: 0.04, toleranceRadius: 0.035, minConfidence: 0.65, isRequired: true }));
 
 const eightScrewROIs: InspectionROI[] = [
-  { id: 'roi-screw-1', name: 'Screw #1', objectType: 'screw', x: 0.3, y: 0.3333 },
-  { id: 'roi-screw-2', name: 'Screw #2', objectType: 'screw', x: 0.43, y: 0.3333 },
-  { id: 'roi-screw-3', name: 'Screw #3', objectType: 'screw', x: 0.57, y: 0.3333 },
-  { id: 'roi-screw-4', name: 'Screw #4', objectType: 'screw', x: 0.7, y: 0.3333 },
-  { id: 'roi-screw-5', name: 'Screw #5', objectType: 'screw', x: 0.3, y: 0.6667 },
-  { id: 'roi-screw-6', name: 'Screw #6', objectType: 'screw', x: 0.43, y: 0.6667 },
-  { id: 'roi-screw-7', name: 'Screw #7', objectType: 'screw', x: 0.57, y: 0.6667 },
-  { id: 'roi-screw-8', name: 'Screw #8', objectType: 'screw', x: 0.7, y: 0.6667 },
+  { id: 'roi-screw-1', name: 'Screw #1', objectType: 'screw' as const, x: 0.3, y: 0.3333 },
+  { id: 'roi-screw-2', name: 'Screw #2', objectType: 'screw' as const, x: 0.43, y: 0.3333 },
+  { id: 'roi-screw-3', name: 'Screw #3', objectType: 'screw' as const, x: 0.57, y: 0.3333 },
+  { id: 'roi-screw-4', name: 'Screw #4', objectType: 'screw' as const, x: 0.7, y: 0.3333 },
+  { id: 'roi-screw-5', name: 'Screw #5', objectType: 'screw' as const, x: 0.3, y: 0.6667 },
+  { id: 'roi-screw-6', name: 'Screw #6', objectType: 'screw' as const, x: 0.43, y: 0.6667 },
+  { id: 'roi-screw-7', name: 'Screw #7', objectType: 'screw' as const, x: 0.57, y: 0.6667 },
+  { id: 'roi-screw-8', name: 'Screw #8', objectType: 'screw' as const, x: 0.7, y: 0.6667 },
 ].map((roi) => ({ ...roi, radius: 0.04, toleranceRadius: 0.035, minConfidence: 0.65, isRequired: true }));
 
 const anchors = [
