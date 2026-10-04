@@ -439,11 +439,14 @@ export function useInspectionPipeline({
 
       const awaitingRemoval = presenceDetectorRef.current.isAwaitingRemoval();
 
-      // Anti-Double Detection: Part has been inspected and is waiting for removal
+      // Post-judgement lifecycle:
+      // 1) If the part leaves the detection zone, reset normally.
+      // 2) If the same part is moved/corrected while still visible, detect the
+      //    repositioning and immediately re-arm it. This prevents the previous
+      //    OK/NG judgement from staying latched after the operator changes the
+      //    part position.
       if (awaitingRemoval) {
         if (!presence.isPartPresent) {
-          // Operator has removed the part from the inspection area!
-          // Ready for next part!
           presenceDetectorRef.current.resetPartState();
           plcService.clearInterlock();
           setState('WAITING_FOR_PART');
@@ -451,11 +454,45 @@ export function useInspectionPipeline({
           setLatestAlignment(null);
           setLatestRoiResults([]);
           setLatestExtraObjects([]);
-        } else {
-          if (state !== 'WAITING_PART_REMOVAL' && state !== 'JUDGEMENT_OK' && state !== 'JUDGEMENT_NG') {
-            setState('WAITING_PART_REMOVAL');
-          }
+          detectionStartTimeRef.current = 0;
+          return;
         }
+
+        const repositioned = presenceDetectorRef.current.detectPostInspectionReposition(
+          presence.motionDelta,
+          activeRevision.tolerance
+        );
+
+        if (repositioned) {
+          // Invalidate the old judgement immediately. The next stable frame
+          // sequence must go through the complete 6-reference inspection again.
+          presenceDetectorRef.current.rearmCurrentPart(now);
+          plcService.clearInterlock();
+          setState('WAITING_FOR_PART');
+          setCurrentResult(null);
+          setLatestAlignment(null);
+          setLatestRoiResults([]);
+          setLatestExtraObjects([]);
+          setStabilizationProgress(0);
+          setMotionDelta(presence.motionDelta);
+          detectionStartTimeRef.current = 0;
+          cycleStartTimeRef.current = 0;
+
+          plcService.logTimelineEvent(
+            'PART_REPOSITIONED_REARM',
+            'VISION',
+            'Part movement detected after judgement; previous OK/NG cleared and inspection re-armed'
+          );
+        } else if (
+          state !== 'WAITING_PART_REMOVAL' &&
+          state !== 'JUDGEMENT_OK' &&
+          state !== 'JUDGEMENT_NG' &&
+          state !== 'ALIGNMENT_ERROR' &&
+          state !== 'SYSTEM_ERROR'
+        ) {
+          setState('WAITING_PART_REMOVAL');
+        }
+
         return;
       }
 
