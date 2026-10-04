@@ -145,7 +145,7 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
               <div className="mb-5 grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
                 <div className="aspect-[4/3] overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
                   {previewRevision ? (
-                    {previewRevision.masterImageUrl ? (
+                    previewRevision.masterImageUrl ? (
                       <img
                         src={previewRevision.masterImageUrl}
                         alt={`${currentMaster.productName} ${previewRevision.revisionCode} master reference`}
@@ -157,7 +157,7 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
                         <span className="text-xs font-semibold text-slate-400">Master image required</span>
                         <span className="text-[10px] font-mono text-slate-600">Open Edit / Calibrate to upload.</span>
                       </div>
-                    )}
+                    )
                   ) : (
                     <div className="h-full flex items-center justify-center text-xs font-mono text-slate-500">
                       Select the active revision to preview
