@@ -8,7 +8,7 @@ import {
   X,
   Save,
   Crosshair,
-    Images,
+  Images,
   Upload,
 } from 'lucide-react';
 import { InspectionROI, MasterProduct, MasterRevision } from '../../types/master';
@@ -148,9 +148,6 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
 
     const clickX = (e.clientX - rect.left) * scaleX;
     const clickY = (e.clientY - rect.top) * scaleY;
-
-    const normX = clickX / canvas.width;
-    const normY = clickY / canvas.height;
 
     // Check Anchors first
     for (const a of editedRevision.anchors) {
@@ -337,8 +334,8 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
                 <canvas
                   ref={canvasRef}
                   onMouseDown={handleCanvasMouseDown}
-                onMouseMove={handleCanvasMouseMove}
-                onMouseUp={handleCanvasMouseUp}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseUp={handleCanvasMouseUp}
                   className="w-full h-full object-contain cursor-crosshair"
                 />
               ) : (
