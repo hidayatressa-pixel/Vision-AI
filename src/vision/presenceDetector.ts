@@ -20,6 +20,7 @@ export class PresenceDetector {
   private stabilizationStartTime: number | null = null;
   private isCurrentlyPresent: boolean = false;
   private hasInspectedCurrentPart: boolean = false;
+  private postInspectionMotionFrames: number = 0;
 
   public setBaseline(stats: { mean: number; variance: number }) {
     this.baselineStats = stats;
@@ -28,12 +29,53 @@ export class PresenceDetector {
   public resetPartState() {
     this.isCurrentlyPresent = false;
     this.hasInspectedCurrentPart = false;
+    this.postInspectionMotionFrames = 0;
     this.stabilizationStartTime = null;
     this.prevFrame = null;
   }
 
   public markPartInspected() {
     this.hasInspectedCurrentPart = true;
+    this.postInspectionMotionFrames = 0;
+  }
+
+  /**
+   * Detects intentional part repositioning after a judgement.
+   *
+   * This is deliberately separate from part-removal detection: an operator may
+   * correct an NG/OK part without taking it completely out of the camera view.
+   * A short burst of significant motion re-arms the same physical part so the
+   * normal stabilization -> inspection cycle can run again.
+   */
+  public detectPostInspectionReposition(
+    motionDelta: number,
+    tolerance: ToleranceConfig
+  ): boolean {
+    if (!this.hasInspectedCurrentPart || !this.isCurrentlyPresent) return false;
+
+    const baseMotionLimit = tolerance.stabilizationMotionThreshold || 8.0;
+    const repositionThreshold = Math.max(10, baseMotionLimit * 1.35);
+
+    if (motionDelta >= repositionThreshold) {
+      this.postInspectionMotionFrames++;
+    } else {
+      this.postInspectionMotionFrames = Math.max(0, this.postInspectionMotionFrames - 1);
+    }
+
+    // Require two consecutive high-motion frames to avoid a single noisy frame
+    // instantly clearing a valid judgement.
+    return this.postInspectionMotionFrames >= 2;
+  }
+
+  /**
+   * Re-arm the current physical part without requiring removal.
+   * The next frames must settle for the configured stabilization delay before
+   * another judgement can be produced.
+   */
+  public rearmCurrentPart(now: number = Date.now()) {
+    this.hasInspectedCurrentPart = false;
+    this.postInspectionMotionFrames = 0;
+    this.stabilizationStartTime = now;
   }
 
   public isAwaitingRemoval(): boolean {
