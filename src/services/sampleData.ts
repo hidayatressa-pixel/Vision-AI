@@ -76,6 +76,18 @@ export const SEED_PRODUCT_A: MasterProduct = {
   }],
 };
 
+const getImageDimensions = (imageUrl: string): Promise<{ width: number; height: number }> =>
+  new Promise((resolve) => {
+    if (!imageUrl) {
+      resolve({ width: 0, height: 0 });
+      return;
+    }
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => resolve({ width: 0, height: 0 });
+    img.src = imageUrl;
+  });
+
 export async function initSeedDataIfEmpty() {
   const { dbService } = await import('./db');
   const existing = await dbService.getAllMasters();
@@ -132,7 +144,11 @@ export async function initSeedDataIfEmpty() {
   if (!sourceRevision) {
     await dbService.saveMaster(SEED_PRODUCT_A);
   } else {
-    const canonical: MasterProduct = {
+    const nativeDimensions = sourceRevision.masterImageUrl
+    ? await getImageDimensions(sourceRevision.masterImageUrl)
+    : { width: 0, height: 0 };
+
+  const canonical: MasterProduct = {
       ...source,
       id: SEED_PRODUCT_A.id,
       productCode: SEED_PRODUCT_A.productCode,
@@ -144,8 +160,10 @@ export async function initSeedDataIfEmpty() {
         masterId: SEED_PRODUCT_A.id,
         revisionCode: 'REV-01',
         expectedObjectCount: 8,
-        masterWidth: sourceRevision.masterWidth || 800,
-        masterHeight: sourceRevision.masterHeight || 600,
+        // Always trust the uploaded image's native dimensions. This migrates
+        // old 800x600 masters without touching normalized ROI/anchor values.
+        masterWidth: nativeDimensions.width || sourceRevision.masterWidth || 0,
+        masterHeight: nativeDimensions.height || sourceRevision.masterHeight || 0,
         inspectionROIs:
           sourceRevision.inspectionROIs?.length === 8
             ? sourceRevision.inspectionROIs
