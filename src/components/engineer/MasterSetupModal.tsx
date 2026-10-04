@@ -8,9 +8,7 @@ import {
   X,
   Save,
   Crosshair,
-  Plus,
-  Trash2,
-  Images,
+    Images,
   Upload,
 } from 'lucide-react';
 import { InspectionROI, MasterProduct, MasterRevision } from '../../types/master';
@@ -47,7 +45,7 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     setSelectedReferenceId(revision.referenceImages?.[0]?.id || '');
   }, [revision]);
 
-  // Redraw Master Image with interactive anchors and ROIs
+  // Redraw master image with interactive anchors and ROIs
   useEffect(() => {
     if (!isOpen) return;
     const canvas = canvasRef.current;
@@ -213,49 +211,16 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     isDraggingRef.current = false;
   };
 
-  // Add new ROI
-  const handleAddRoi = () => {
-    const nextIdx = editedRevision.inspectionROIs.length + 1;
-    const newRoi: InspectionROI = {
-      id: `roi-screw-${nextIdx}-${Date.now()}`,
-      name: `Screw #${nextIdx}`,
-      objectType: 'screw',
-      x: 0.5,
-      y: 0.5,
-      radius: 0.04,
-      toleranceRadius: 0.035,
-      minConfidence: 0.65,
-      isRequired: true,
+  const handleReplaceMasterImage = (file: File | null) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setEditedRevision((prev) => ({
+        ...prev,
+        masterImageUrl: String(reader.result || ''),
+      }));
     };
-
-    setEditedRevision((prev) => ({
-      ...prev,
-      expectedObjectCount: prev.expectedObjectCount + 1,
-      inspectionROIs: [...prev.inspectionROIs, newRoi],
-      referenceImages: [
-        ...(prev.referenceImages || []),
-        {
-          id: `ref-${newRoi.id}`,
-          label: newRoi.name,
-          roiId: newRoi.id,
-          imageUrl: prev.masterImageUrl,
-          description: 'Placeholder reference. Replace this image with the correct close-up reference.',
-        },
-      ],
-    }));
-    setSelectedId(newRoi.id);
-    setSelectedItemType('ROI');
-  };
-
-  // Remove ROI
-  const handleRemoveRoi = (id: string) => {
-    setEditedRevision((prev) => ({
-      ...prev,
-      expectedObjectCount: Math.max(1, prev.expectedObjectCount - 1),
-      inspectionROIs: prev.inspectionROIs.filter((r) => r.id !== id),
-      referenceImages: (prev.referenceImages || []).filter((reference) => reference.roiId !== id),
-    }));
-    setSelectedId('');
+    reader.readAsDataURL(file);
   };
 
   const selectedReference = editedRevision.referenceImages?.find((reference) => reference.id === selectedReferenceId);
@@ -280,8 +245,9 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     setSaveError(null);
     const tolerance = editedRevision.tolerance;
     const errors: string[] = [];
-    if (editedRevision.anchors.length < 3) errors.push('Minimum 3 reference anchors are required for reliable alignment.');
-    if (editedRevision.inspectionROIs.length === 0) errors.push('At least 1 inspection ROI is required.');
+    if (editedRevision.anchors.length !== 4) errors.push('Exactly 4 alignment anchors are required.');
+    if (editedRevision.inspectionROIs.length !== 8) errors.push('Exactly 8 screw inspection ROIs are required.');
+    if (!editedRevision.masterImageUrl || !editedRevision.masterImageUrl.trim()) errors.push('A master image is required.');
     const references = editedRevision.referenceImages || [];
     if (references.length !== 6) {
       errors.push(`Exactly 6 master reference images are required (${references.length}/6 configured).`);
@@ -292,7 +258,7 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     if (new Set(references.map((reference) => reference.id)).size !== references.length) {
       errors.push('Master reference IDs must be unique.');
     }
-    if (editedRevision.expectedObjectCount !== editedRevision.inspectionROIs.length) {
+    if (editedRevision.expectedObjectCount !== 8 || editedRevision.expectedObjectCount !== editedRevision.inspectionROIs.length) {
       errors.push('Expected object count must match the number of inspection ROIs.');
     }
     if (tolerance.maxPositionOffsetPx <= 0 || tolerance.maxPositionOffsetMm <= 0) {
@@ -367,13 +333,27 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
           <div className="lg:col-span-2 space-y-3">
             <div className="relative aspect-[4/3] bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex items-center justify-center select-none">
               <div className="absolute left-3 top-3 z-10 rounded-lg border border-cyan-500/30 bg-slate-950/85 px-2 py-1 text-[10px] font-mono text-cyan-300 backdrop-blur-sm">MASTER IMAGE · {editedRevision.revisionCode}</div>
-              <canvas
-                ref={canvasRef}
-                onMouseDown={handleCanvasMouseDown}
+              {editedRevision.masterImageUrl ? (
+                <canvas
+                  ref={canvasRef}
+                  onMouseDown={handleCanvasMouseDown}
                 onMouseMove={handleCanvasMouseMove}
                 onMouseUp={handleCanvasMouseUp}
-                className="w-full h-full object-contain cursor-crosshair"
-              />
+                  className="w-full h-full object-contain cursor-crosshair"
+                />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+                  <Images className="h-10 w-10 text-slate-600" />
+                  <div>
+                    <div className="text-sm font-semibold text-white">Master image not configured</div>
+                    <div className="mt-1 text-xs text-slate-500">Upload the approved full-view image to define the alignment reference.</div>
+                  </div>
+                  <label className="cursor-pointer rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20">
+                    Upload Master Image
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleReplaceMasterImage(e.target.files?.[0] || null)} />
+                  </label>
+                </div>
+              )}
             </div>
             <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
               <div className="flex items-center justify-between gap-3 mb-3">
@@ -431,6 +411,17 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
               </div>
             </div>
 
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+              <div>
+                <div className="text-xs font-semibold text-white">Master Image</div>
+                <div className="text-[10px] font-mono text-slate-500">Full-view image used as the layout and alignment reference.</div>
+              </div>
+              <label className="shrink-0 cursor-pointer rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-500/50">
+                {editedRevision.masterImageUrl ? 'Replace' : 'Upload'}
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleReplaceMasterImage(e.target.files?.[0] || null)} />
+              </label>
+            </div>
+
             <div className="text-xs font-mono text-slate-400 flex items-center justify-between">
               <span>Master image = layout/alignment reference. Close-up references = visual evidence for each inspection point.</span>
               <span className="text-cyan-400">Master Res: {editedRevision.masterWidth}x{editedRevision.masterHeight}</span>
@@ -465,13 +456,7 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
                   <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
                     Inspection Screws
                   </span>
-                  <button
-                    onClick={handleAddRoi}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 text-xs font-medium hover:bg-cyan-600/30"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add ROI</span>
-                  </button>
+                  <span className="text-[10px] font-mono text-cyan-300">8 required</span>
                 </div>
 
                 {selectedReference && (
@@ -521,15 +506,7 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
                             }}
                             className="bg-transparent font-bold text-white font-mono focus:outline-none focus:border-b border-cyan-400"
                           />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveRoi(roi.id);
-                            }}
-                            className="text-slate-500 hover:text-red-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-400">
