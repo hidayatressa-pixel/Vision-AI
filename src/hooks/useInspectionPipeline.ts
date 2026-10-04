@@ -369,7 +369,10 @@ export function useInspectionPipeline({
       // 9. Freeze the completed judgement. The live loop owns the lifecycle
       // from this point: removal or repositioning can re-arm the part without
       // relying on a stale timeout.
-      presenceDetectorRef.current.markPartInspected();
+      presenceDetectorRef.current.markPartInspected(
+        gray,
+        revision.detectionZone
+      );
       isProcessingRef.current = false;
     } catch (error) {
       const message =
