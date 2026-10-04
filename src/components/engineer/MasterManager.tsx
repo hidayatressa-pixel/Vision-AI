@@ -1,6 +1,6 @@
 /**
  * Master Management Module
- * Catalogs products, revisions (e.g. Rev 01 6-screws, Rev 02 8-screws), and active status.
+ * Manages production masters, revisions, inspection ROIs, and activation state.
  */
 
 import React, { useState } from 'react';
@@ -145,11 +145,19 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
               <div className="mb-5 grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
                 <div className="aspect-[4/3] overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
                   {previewRevision ? (
-                    <img
-                      src={previewRevision.masterImageUrl}
-                      alt={`${currentMaster.productName} ${previewRevision.revisionCode} master reference`}
-                      className="h-full w-full object-contain"
-                    />
+                    {previewRevision.masterImageUrl ? (
+                      <img
+                        src={previewRevision.masterImageUrl}
+                        alt={`${currentMaster.productName} ${previewRevision.revisionCode} master reference`}
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+                        <Images className="h-7 w-7 text-slate-600" />
+                        <span className="text-xs font-semibold text-slate-400">Master image required</span>
+                        <span className="text-[10px] font-mono text-slate-600">Open Edit / Calibrate to upload.</span>
+                      </div>
+                    )}
                   ) : (
                     <div className="h-full flex items-center justify-center text-xs font-mono text-slate-500">
                       Select the active revision to preview
@@ -160,7 +168,7 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
                   <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-400">Master Image</div>
                   <div className="mt-1 text-sm font-bold text-white">Reference for vision alignment & inspection</div>
                   <p className="mt-2 text-xs leading-5 text-slate-400">
-                    This image is the dummy master reference. The blue anchors are used for alignment; the screw markers define the expected inspection locations.
+                    The master image defines the approved layout and alignment reference. Anchors define alignment; screw ROIs define the eight required inspection locations.
                   </p>
                   {previewRevision && (
                     <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-mono">
@@ -192,7 +200,11 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
                     {previewRevision.referenceImages.map((reference) => (
                       <div key={reference.id} className="shrink-0 w-24">
                         <div className="aspect-square rounded-lg overflow-hidden border border-slate-800 bg-slate-900">
-                          <img src={reference.imageUrl} alt={reference.label} className="h-full w-full object-cover" />
+                          {reference.imageUrl ? (
+                        <img src={reference.imageUrl} alt={reference.label} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[9px] font-mono text-slate-600">NOT CONFIGURED</div>
+                      )}
                         </div>
                         <div className="mt-1 text-[10px] font-mono text-slate-300 text-center truncate">{reference.label}</div>
                       </div>
