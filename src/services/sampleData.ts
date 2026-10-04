@@ -78,10 +78,24 @@ export async function initSeedDataIfEmpty() {
     return;
   }
 
+  // Remove the legacy seeded configuration without touching engineer-created masters.
+  const legacySeed = existing.find((master) => master.id === 'prd-bracket-m4');
+  if (legacySeed && legacySeed.id !== SEED_PRODUCT_A.id) {
+    await dbService.deleteMaster(legacySeed.id);
+  }
+
   const seeded = existing.find((master) => master.id === SEED_PRODUCT_A.id);
   if (seeded) {
-    const revision = seeded.revisions.find((item) => item.id === SEED_PRODUCT_A.activeRevisionId);
-    if (!revision || revision.expectedObjectCount !== 8) {
+    const isLegacyShape =
+      seeded.productName !== SEED_PRODUCT_A.productName ||
+      seeded.revisions.length !== 1 ||
+      seeded.revisions.some((revision) =>
+        revision.id === 'rev-01-6screw' ||
+        revision.id === 'rev-02-8screw' ||
+        revision.masterImageUrl.includes('product-a-')
+      );
+
+    if (isLegacyShape) {
       await dbService.saveMaster(SEED_PRODUCT_A);
     }
   }
