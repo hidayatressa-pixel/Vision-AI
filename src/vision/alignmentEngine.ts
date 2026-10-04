@@ -113,14 +113,7 @@ export class AlignmentEngine {
       if (provisional) {
         const predictedCenters = new Map<string, Position2D>();
         for (const anchor of anchors) {
-          const expected = this.transformMasterPoint(
-            { x: anchor.x, y: anchor.y },
-            frame.width,
-            frame.height,
-            { success: false, translationX: 0, translationY: 0, rotationDeg: 0, scale: 1, confidence: 0, matchedAnchorCount: 0, totalAnchorCount: anchors.length, anchorPositions: [] },
-            masterWidth,
-            masterHeight
-          );
+          const expected = this.mapMasterPointToFrame({ x: anchor.x, y: anchor.y }, frame.width, frame.height, masterWidth, masterHeight)
           predictedCenters.set(anchor.id, this.applyTransform(expected, provisional));
         }
 
