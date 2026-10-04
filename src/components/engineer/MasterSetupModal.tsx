@@ -54,12 +54,17 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const width = editedRevision.masterWidth || 800;
+    const height = editedRevision.masterHeight || 600;
+    canvas.width = width;
+    canvas.height = height;
+    ctx.clearRect(0, 0, width, height);
+
     const drawOverlay = () => {
       const w = canvas.width;
       const h = canvas.height;
-
-      // 1. Draw Detection Zone
       const dz = editedRevision.detectionZone;
+
       ctx.strokeStyle = '#06b6d4';
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
@@ -67,157 +72,81 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
       ctx.setLineDash([]);
       ctx.fillStyle = 'rgba(6, 182, 212, 0.05)';
       ctx.fillRect(dz.x * w, dz.y * h, dz.width * w, dz.height * h);
-
       ctx.font = '10px monospace';
       ctx.fillStyle = '#06b6d4';
       ctx.fillText('DETECTION ZONE', dz.x * w + 8, dz.y * h + 16);
 
-      // 2. Draw Anchors (Fiducials A, B, C, D)
-      for (const a of editedRevision.anchors) {
-        const ax = a.x * w;
-        const ay = a.y * h;
-        const isSel = selectedItemType === 'ANCHOR' && selectedId === a.id;
-
-        ctx.strokeStyle = isSel ? '#f59e0b' : '#38bdf8';
-        ctx.lineWidth = isSel ? 3 : 2;
+      for (const anchor of editedRevision.anchors) {
+        const x = anchor.x * w;
+        const y = anchor.y * h;
+        const selected = selectedItemType === 'ANCHOR' && selectedId === anchor.id;
+        ctx.strokeStyle = selected ? '#f59e0b' : '#38bdf8';
+        ctx.lineWidth = selected ? 3 : 2;
         ctx.beginPath();
-        ctx.arc(ax, ay, 12, 0, Math.PI * 2);
+        ctx.arc(x, y, 12, 0, Math.PI * 2);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(ax - 18, ay);
-        ctx.lineTo(ax + 18, ay);
-        ctx.moveTo(ax, ay - 18);
-        ctx.lineTo(ax, ay + 18);
+        ctx.moveTo(x - 18, y);
+        ctx.lineTo(x + 18, y);
+        ctx.moveTo(x, y - 18);
+        ctx.lineTo(x, y + 18);
         ctx.stroke();
-
         ctx.font = 'bold 11px monospace';
-        ctx.fillStyle = isSel ? '#f59e0b' : '#38bdf8';
-        ctx.fillText(a.name, ax + 14, ay - 6);
+        ctx.fillStyle = selected ? '#f59e0b' : '#38bdf8';
+        ctx.textAlign = 'start';
+        ctx.fillText(anchor.name, x + 14, y - 6);
       }
 
-      // 3. Draw Inspection ROIs
       for (const roi of editedRevision.inspectionROIs) {
-        const rx = roi.x * w;
-        const ry = roi.y * h;
-        const isSel = selectedItemType === 'ROI' && selectedId === roi.id;
-        const rPx = 22;
-        ctx.strokeStyle = isSel ? '#f59e0b' : '#10b981';
-        ctx.lineWidth = isSel ? 3 : 2;
+        const x = roi.x * w;
+        const y = roi.y * h;
+        const selected = selectedItemType === 'ROI' && selectedId === roi.id;
+        ctx.strokeStyle = selected ? '#f59e0b' : '#10b981';
+        ctx.lineWidth = selected ? 3 : 2;
         ctx.beginPath();
-        ctx.arc(rx, ry, rPx, 0, Math.PI * 2);
+        ctx.arc(x, y, 22, 0, Math.PI * 2);
         ctx.stroke();
 
-        const tolPx = editedRevision.tolerance.maxPositionOffsetPx || 25;
+        const toleranceRadius = editedRevision.tolerance.maxPositionOffsetPx || 25;
         ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
-        ctx.arc(rx, ry, tolPx, 0, Math.PI * 2);
+        ctx.arc(x, y, toleranceRadius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
 
         ctx.font = 'bold 11px monospace';
-        ctx.fillStyle = isSel ? '#f59e0b' : '#10b981';
+        ctx.fillStyle = selected ? '#f59e0b' : '#10b981';
         ctx.textAlign = 'center';
-        ctx.fillText(roi.name, rx, ry + rPx + 14);
+        ctx.fillText(roi.name, x, y + 36);
       }
       ctx.textAlign = 'start';
     };
 
     const imageUrl = editedRevision.masterImageUrl?.trim();
-    canvas.width = editedRevision.masterWidth || 800;
-    canvas.height = editedRevision.masterHeight || 600;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     if (!imageUrl) return;
 
     const img = new Image();
+    img.decoding = 'async';
     img.onload = () => {
-      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-        // Keep the configured inspection coordinate system stable while
-        // rendering the uploaded master image into it.
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        drawOverlay();
-      }
+      if (img.naturalWidth === 0 || img.naturalHeight === 0) return;
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      drawOverlay();
     };
     img.onerror = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Master image could not be rendered', width / 2, height / 2);
+      ctx.textAlign = 'start';
       console.warn('[MasterSetup] Failed to render master image');
     };
     img.src = imageUrl;
-
-      const w = canvas.width;
-      const h = canvas.height;
-
-      // 1. Draw Detection Zone
-      const dz = editedRevision.detectionZone;
-      ctx.strokeStyle = '#06b6d4';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-      ctx.strokeRect(dz.x * w, dz.y * h, dz.width * w, dz.height * h);
-      ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(6, 182, 212, 0.05)';
-      ctx.fillRect(dz.x * w, dz.y * h, dz.width * w, dz.height * h);
-
-      ctx.font = '10px monospace';
-      ctx.fillStyle = '#06b6d4';
-      ctx.fillText('DETECTION ZONE', dz.x * w + 8, dz.y * h + 16);
-
-      // 2. Draw Anchors (Fiducials A, B, C, D)
-      for (const a of editedRevision.anchors) {
-        const ax = a.x * w;
-        const ay = a.y * h;
-        const isSel = selectedItemType === 'ANCHOR' && selectedId === a.id;
-
-        ctx.strokeStyle = isSel ? '#f59e0b' : '#38bdf8';
-        ctx.lineWidth = isSel ? 3 : 2;
-
-        ctx.beginPath();
-        ctx.arc(ax, ay, 12, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(ax - 18, ay);
-        ctx.lineTo(ax + 18, ay);
-        ctx.moveTo(ax, ay - 18);
-        ctx.lineTo(ax, ay + 18);
-        ctx.stroke();
-
-        ctx.font = 'bold 11px monospace';
-        ctx.fillStyle = isSel ? '#f59e0b' : '#38bdf8';
-        ctx.fillText(a.name, ax + 14, ay - 6);
-      }
-
-      // 3. Draw Inspection ROIs
-      for (const roi of editedRevision.inspectionROIs) {
-        const rx = roi.x * w;
-        const ry = roi.y * h;
-        const isSel = selectedItemType === 'ROI' && selectedId === roi.id;
-
-        // Radius
-        const rPx = 22;
-        ctx.strokeStyle = isSel ? '#f59e0b' : '#10b981';
-        ctx.lineWidth = isSel ? 3 : 2;
-        ctx.beginPath();
-        ctx.arc(rx, ry, rPx, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Tolerance radius boundary
-        const tolPx = editedRevision.tolerance.maxPositionOffsetPx || 25;
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.arc(rx, ry, tolPx, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.font = 'bold 11px monospace';
-        ctx.fillStyle = isSel ? '#f59e0b' : '#10b981';
-        ctx.textAlign = 'center';
-        ctx.fillText(roi.name, rx, ry + rPx + 14);
-      }
-    };
   }, [editedRevision, isOpen, selectedId, selectedItemType]);
 
   // Handle canvas click to drag/select anchor or ROI
