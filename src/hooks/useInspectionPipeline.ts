@@ -25,6 +25,7 @@ import { getRegionStats, toGrayscale } from '../vision/imageUtils';
 import { PresenceDetector } from '../vision/presenceDetector';
 import { roiInspector } from '../vision/roiInspector';
 import { ruleEngine } from '../vision/ruleEngine';
+import { preprocessInspectionFrame } from '../vision/opencvEngine';
 
 export interface UseInspectionPipelineProps {
   activeMaster: MasterProduct | null;
@@ -142,7 +143,15 @@ export function useInspectionPipeline({
         setState('ALIGNING');
       plcService.logTimelineEvent('ALIGNMENT_STARTED', 'VISION', 'Locating reference fiducials A, B, C, D');
 
-      const gray = toGrayscale(frameData);
+      // OpenCV 5 preprocessing is intentionally performed on the captured
+      // inspection frame (not only as a demo/diagnostic path). The resulting
+      // normalized grayscale image feeds the existing alignment and ROI engines.
+      const opencvFrame = await preprocessInspectionFrame(frameData);
+      const gray = opencvFrame.gray;
+      console.debug('[OpenCV 5] inspection preprocessing', {
+        processingMs: Math.round(opencvFrame.processingMs),
+        edgeDensity: Number(opencvFrame.edgeDensity.toFixed(4)),
+      });
 
       // 1. Reference Alignment
       const alignStart = performance.now();
