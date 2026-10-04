@@ -67,11 +67,11 @@ export default function App() {
     const now = new Date().toISOString();
     const productId = `prd-${newIdx}-${Date.now()}`;
     const revisionId = `rev-01-${Date.now()}`;
-    const baseRevision = SEED_PRODUCT_A.revisions[0];
+    const baseRevision = SEED_PRODUCT_A.revisions.find((revision) => revision.expectedObjectCount === 8) || SEED_PRODUCT_A.revisions[0];
     const newProduct: MasterProduct = {
       id: productId,
-      productCode: `PRD-CHASSIS-${String(newIdx).padStart(2, '0')}`,
-      productName: `Product ${String.fromCharCode(65 + newIdx - 1)} · 8-Screw Module`,
+      productCode: `PRD-REFLECTOR-HL-GJRA-${String(newIdx).padStart(2, '0')}`,
+      productName: 'Reflector Assy HL GJRA',
       description: 'New master cloned from the latest eight-screw production baseline.', activeRevisionId: revisionId, isActive: true,
       createdAt: now, updatedAt: now, createdBy: 'System Engineer',
       revisions: [{ ...baseRevision, id: revisionId, masterId: productId, revisionCode: 'REV-01', revisionNote: 'Initial production baseline', createdAt: now, updatedAt: now }],
