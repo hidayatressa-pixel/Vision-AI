@@ -73,87 +73,96 @@ export async function initSeedDataIfEmpty() {
   const { dbService } = await import('./db');
   const existing = await dbService.getAllMasters();
 
-  if (existing.length === 0) {
+  const isReflector = (master: MasterProduct) => {
+    const name = (master.productName || '').trim().toLowerCase();
+    const code = (master.productCode || '').trim().toLowerCase();
+    return (
+      master.id === SEED_PRODUCT_A.id ||
+      name === SEED_PRODUCT_A.productName.toLowerCase() ||
+      code === SEED_PRODUCT_A.productCode.toLowerCase() ||
+      code.includes('reflector-assy-hl-gjra') ||
+      name.includes('reflector assy hl gjra')
+    );
+  };
+
+  const reflectorMasters = existing.filter(isReflector);
+
+  if (reflectorMasters.length === 0) {
+    // No production master exists: create exactly one clean canonical record.
     await dbService.saveMaster(SEED_PRODUCT_A);
+    for (const master of existing) {
+      await dbService.deleteMaster(master.id);
+    }
     return;
   }
 
-  // One-time data normalization: there must be exactly one registered
-  // Reflector Assy HL GJRA master. If an older duplicate contains real
-  // uploaded master/reference images, keep that configured copy and migrate
-  // it onto the canonical production ID before removing duplicates.
-  const reflectorMasters = existing.filter(
-    (master) =>
-      master.id === SEED_PRODUCT_A.id ||
-      master.productCode === SEED_PRODUCT_A.productCode ||
-      master.productName.trim().toLowerCase() === SEED_PRODUCT_A.productName.trim().toLowerCase()
-  );
+  const completeness = (master: MasterProduct) => {
+    const revision =
+      master.revisions.find((r) => r.id === master.activeRevisionId) ||
+      master.revisions[0];
+    if (!revision) return 0;
 
-  if (reflectorMasters.length > 0) {
-    const completeness = (master: MasterProduct) => {
-      const revision = master.revisions.find((r) => r.id === master.activeRevisionId) || master.revisions[0];
-      if (!revision) return 0;
-      return (
-        (revision.masterImageUrl ? 1000 : 0) +
-        revision.referenceImages.filter((r) => Boolean(r.imageUrl)).length * 100 +
-        (revision.anchors.length === 4 ? 20 : 0) +
-        (revision.inspectionROIs.length === 8 ? 20 : 0)
-      );
-    };
+    return (
+      (revision.masterImageUrl ? 1000 : 0) +
+      revision.referenceImages.filter((r) => Boolean(r.imageUrl)).length * 100 +
+      (revision.anchors.length === 4 ? 20 : 0) +
+      (revision.inspectionROIs.length === 8 ? 20 : 0)
+    );
+  };
 
-    const source = [...reflectorMasters].sort((a, b) => {
-      const scoreDiff = completeness(b) - completeness(a);
-      if (scoreDiff !== 0) return scoreDiff;
-      return a.id === SEED_PRODUCT_A.id ? -1 : 1;
-    })[0];
+  // Keep the most complete Reflector configuration so uploaded master and
+  // reference images are never discarded during cleanup.
+  const source = [...reflectorMasters].sort((a, b) => {
+    const scoreDiff = completeness(b) - completeness(a);
+    if (scoreDiff !== 0) return scoreDiff;
+    return a.id === SEED_PRODUCT_A.id ? -1 : 1;
+  })[0];
 
-    const sourceRevision =
-      source.revisions.find((r) => r.id === source.activeRevisionId) || source.revisions[0];
+  const sourceRevision =
+    source.revisions.find((r) => r.id === source.activeRevisionId) ||
+    source.revisions[0];
 
-    if (sourceRevision) {
-      const canonical: MasterProduct = {
-        ...source,
-        id: SEED_PRODUCT_A.id,
-        productCode: SEED_PRODUCT_A.productCode,
-        productName: SEED_PRODUCT_A.productName,
-        activeRevisionId: sourceRevision.id === 'rev-01-8screw' ? sourceRevision.id : 'rev-01-8screw',
-        revisions: [{
-          ...sourceRevision,
-          id: 'rev-01-8screw',
-          masterId: SEED_PRODUCT_A.id,
-          revisionCode: 'REV-01',
-          expectedObjectCount: 8,
-          masterWidth: sourceRevision.masterWidth || 800,
-          masterHeight: sourceRevision.masterHeight || 600,
-          inspectionROIs: sourceRevision.inspectionROIs?.length === 8
+  if (!sourceRevision) {
+    await dbService.saveMaster(SEED_PRODUCT_A);
+  } else {
+    const canonical: MasterProduct = {
+      ...source,
+      id: SEED_PRODUCT_A.id,
+      productCode: SEED_PRODUCT_A.productCode,
+      productName: SEED_PRODUCT_A.productName,
+      activeRevisionId: 'rev-01-8screw',
+      revisions: [{
+        ...sourceRevision,
+        id: 'rev-01-8screw',
+        masterId: SEED_PRODUCT_A.id,
+        revisionCode: 'REV-01',
+        expectedObjectCount: 8,
+        masterWidth: sourceRevision.masterWidth || 800,
+        masterHeight: sourceRevision.masterHeight || 600,
+        inspectionROIs:
+          sourceRevision.inspectionROIs?.length === 8
             ? sourceRevision.inspectionROIs
             : SEED_PRODUCT_A.revisions[0].inspectionROIs,
-          anchors: sourceRevision.anchors?.length === 4
+        anchors:
+          sourceRevision.anchors?.length === 4
             ? sourceRevision.anchors
             : SEED_PRODUCT_A.revisions[0].anchors,
-          referenceImages: sourceRevision.referenceImages?.length === 6
+        referenceImages:
+          sourceRevision.referenceImages?.length === 6
             ? sourceRevision.referenceImages
             : SEED_PRODUCT_A.revisions[0].referenceImages,
-        }],
-        updatedAt: new Date().toISOString(),
-      };
+      }],
+      updatedAt: new Date().toISOString(),
+    };
 
-      await dbService.saveMaster(canonical);
-
-      for (const duplicate of reflectorMasters) {
-        if (duplicate.id !== SEED_PRODUCT_A.id) {
-          await dbService.deleteMaster(duplicate.id);
-        }
-      }
-      return;
-    }
+    await dbService.saveMaster(canonical);
   }
 
-  // Remove the old Product A seed if it still exists.
-  const legacySeed = existing.find((master) => master.id === 'prd-bracket-m4');
-  if (legacySeed) await dbService.deleteMaster(legacySeed.id);
-
-  if (!existing.some((master) => master.id === SEED_PRODUCT_A.id)) {
-    await dbService.saveMaster(SEED_PRODUCT_A);
+  // Production policy: only Reflector Assy HL GJRA may remain registered.
+  // This removes legacy B6 / 6-screw / Product A records and any duplicates.
+  for (const master of existing) {
+    if (master.id !== SEED_PRODUCT_A.id) {
+      await dbService.deleteMaster(master.id);
+    }
   }
 }
