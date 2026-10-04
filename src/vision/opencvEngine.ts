@@ -5,13 +5,13 @@
  * The deterministic RVI rules remain the final authority for OK/NG/ERROR.
  */
 
-import { loadOpenCV, type OpenCV } from '@opencvjs/web';
+import { loadOpenCV } from '@opencvjs/web';
 import type { GrayscaleImage } from './imageUtils';
 import type { Position2D } from '../types/master';
 
-let cvPromise: Promise<OpenCV> | null = null;
+let cvPromise: ReturnType<typeof loadOpenCV> | null = null;
 
-function getOpenCV(): Promise<OpenCV> {
+function getOpenCV(): ReturnType<typeof loadOpenCV> {
   if (!cvPromise) {
     cvPromise = loadOpenCV().catch((error) => {
       cvPromise = null;
@@ -33,7 +33,7 @@ export interface OpenCVCircle {
   confidence: number;
 }
 
-export async function initializeOpenCV(): Promise<OpenCV> {
+export function initializeOpenCV(): ReturnType<typeof loadOpenCV> {
   return getOpenCV();
 }
 
