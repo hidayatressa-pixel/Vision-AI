@@ -1,17 +1,16 @@
 /**
- * Real Workpiece Synthetic Frame Generator
- * Generates pixel-accurate test frames to validate all inspection scenarios
- * directly in the browser without requiring physical hardware.
+ * Inspection Scenario Generator
+ * Provides deterministic stand scenarios for engineering verification without physical hardware.
  */
 
 export type TestScenarioType =
   | 'EMPTY_STAND'
   | 'PERFECT_PASS'
-  | 'SHIFTED_VIBRATION' // 15px shift + 3 deg rotation -> MUST PASS (alignment compensates!)
+  | 'SHIFTED_VIBRATION' // Shift and rotation scenario used to verify alignment compensation.
   | 'MISSING_SCREW_4' // NG: Screw #4 Missing
   | 'MISSING_SCREW_2' // NG: Screw #2 Missing
   | 'OUT_OF_TOLERANCE_SCREW_2' // NG: Screw #2 shifted 40px away
-  | 'EXTRA_SCREW' // NG: 7th screw added in bracket
+  | 'EXTRA_SCREW' // NG: extra ninth screw added in the workpiece area
   | 'ALIGNMENT_FAILURE'; // System Error: Anchors blocked/missing
 
 export function drawWorkpieceToCanvas(
@@ -118,14 +117,11 @@ export function drawWorkpieceToCanvas(
     ctx.fillRect(anchors[1].x - 20, anchors[1].y - 20, 40, 40);
   }
 
-  // Draw Screws (6 screws standard)
+  // Draw the production configuration: 8 required screws.
+  const screwXs = [bx + 70, bx + 183, bx + 297, bx + 410];
   const screws: Array<{ id: number; x: number; y: number; label: string; present: boolean }> = [
-    { id: 1, x: bx + 100, y: by + 80, label: '#1', present: true },
-    { id: 2, x: bx + bw / 2, y: by + 80, label: '#2', present: true },
-    { id: 3, x: bx + bw - 100, y: by + 80, label: '#3', present: true },
-    { id: 4, x: bx + 100, y: by + bh - 80, label: '#4', present: true },
-    { id: 5, x: bx + bw / 2, y: by + bh - 80, label: '#5', present: true },
-    { id: 6, x: bx + bw - 100, y: by + bh - 80, label: '#6', present: true },
+    ...screwXs.map((x, index) => ({ id: index + 1, x, y: by + 80, label: `#${index + 1}`, present: true })),
+    ...screwXs.map((x, index) => ({ id: index + 5, x, y: by + bh - 80, label: `#${index + 5}`, present: true })),
   ];
 
   // Modify screws based on scenario
@@ -149,8 +145,8 @@ export function drawWorkpieceToCanvas(
 
   // Extra screw scenario
   if (scenario === 'EXTRA_SCREW') {
-    // An extra loose screw placed on the bracket
-    drawScrew(ctx, bx + bw / 2 - 80, by + bh / 2 + 10, 'EXTRA');
+    // An extra loose screw placed away from every configured ROI.
+    drawScrew(ctx, bx + bw / 2, by + bh / 2 + 55, 'EXTRA');
   }
 
   ctx.restore();
