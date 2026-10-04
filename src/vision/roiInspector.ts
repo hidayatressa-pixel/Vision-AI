@@ -7,12 +7,13 @@ import { AlignmentResult, ExtraDetectedObject, ROIInspectionResult } from '../ty
 import { InspectionROI, Position2D, ToleranceConfig } from '../types/master';
 import { alignmentEngine } from './alignmentEngine';
 import { GrayscaleImage, sobelEdges } from './imageUtils';
+import { detectOpenCVCircles, OpenCVCircle } from './opencvEngine';
 
 export class ROIInspector {
   /**
    * Inspects all transformed ROIs and scans for unexpected extra objects
    */
-  public inspectROIs(
+  public async inspectROIs(
     frame: GrayscaleImage,
     rois: InspectionROI[],
     alignment: AlignmentResult,
@@ -23,6 +24,17 @@ export class ROIInspector {
     detectedScrewCount: number;
   } {
     const edges = sobelEdges(frame);
+    const minRadiusPx = Math.max(3, Math.round(Math.min(frame.width, frame.height) * 0.008));
+    const maxRadiusPx = Math.max(minRadiusPx + 2, Math.round(Math.min(frame.width, frame.height) * 0.055));
+    let openCVCircles: OpenCVCircle[] = [];
+    try {
+      openCVCircles = await detectOpenCVCircles(frame, minRadiusPx, maxRadiusPx);
+    } catch (error) {
+      // OpenCV candidate detection is non-authoritative; retain the existing
+      // deterministic detector if the WASM path is unavailable.
+      console.warn('[ROIInspector] OpenCV circle detection unavailable:', error);
+    }
+
     const results: ROIInspectionResult[] = [];
     let detectedScrewCount = 0;
 
@@ -57,7 +69,8 @@ export class ROIInspector {
         transformedPx.x,
         transformedPx.y,
         searchRadius,
-        expectedRadiusPx
+        expectedRadiusPx,
+        openCVCircles
       );
 
       // 3. Evaluate tolerance and confidence
@@ -146,12 +159,40 @@ export class ROIInspector {
     expX: number,
     expY: number,
     searchRadius: number,
-    expectedRadius: number
+    expectedRadius: number,
+    openCVCircles: OpenCVCircle[] = []
   ): { isPresent: boolean; center: Position2D | null; confidence: number } {
     const x0 = Math.max(expectedRadius, Math.floor(expX - searchRadius));
     const y0 = Math.max(expectedRadius, Math.floor(expY - searchRadius));
     const x1 = Math.min(frame.width - expectedRadius, Math.ceil(expX + searchRadius));
     const y1 = Math.min(frame.height - expectedRadius, Math.ceil(expY + searchRadius));
+
+    // Prefer an OpenCV Hough-circle candidate inside the transformed ROI.
+    // The candidate is still checked against the configured master tolerance;
+    // OpenCV never overrides the master/rule decision.
+    const cvCandidate = openCVCircles
+      .filter((circle) => {
+        const d = Math.hypot(circle.center.x - expX, circle.center.y - expY);
+        return d <= searchRadius && circle.radius >= expectedRadius * 0.55 && circle.radius <= expectedRadius * 1.65;
+      })
+      .sort((a, b) => {
+        const da = Math.hypot(a.center.x - expX, a.center.y - expY);
+        const db = Math.hypot(b.center.x - expX, b.center.y - expY);
+        return da - db;
+      })[0];
+
+    if (cvCandidate) {
+      const distance = Math.hypot(cvCandidate.center.x - expX, cvCandidate.center.y - expY);
+      const distanceFactor = Math.max(0, 1 - distance / Math.max(searchRadius, 1));
+      const radiusFactor = Math.max(
+        0,
+        1 - Math.abs(cvCandidate.radius - expectedRadius) / Math.max(expectedRadius, 1)
+      );
+      const confidence = Math.min(0.99, cvCandidate.confidence * (0.70 + 0.30 * radiusFactor) * (0.70 + 0.30 * distanceFactor));
+      if (confidence >= 0.55) {
+        return { isPresent: true, center: cvCandidate.center, confidence };
+      }
+    }
 
     let bestScore = 0;
     let bestCenter: Position2D | null = null;
