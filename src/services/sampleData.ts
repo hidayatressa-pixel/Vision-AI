@@ -1,8 +1,13 @@
 import { InspectionROI, MasterProduct, ReferenceImage } from '../types/master';
 
+// Actual reflector layout from the production photo:
+// 4 screws across the upper brackets, 2 screws in the center, 2 screws below.
+// The Master Setup editor remains the final calibration authority; these are
+// only the initial seed positions and can be dragged to the exact master image.
 const eightScrewROIs: InspectionROI[] = [
   [0.30, 0.3333], [0.43, 0.3333], [0.57, 0.3333], [0.70, 0.3333],
-  [0.30, 0.6667], [0.43, 0.6667], [0.57, 0.6667], [0.70, 0.6667],
+  [0.38, 0.4667], [0.62, 0.4667],
+  [0.42, 0.7000], [0.58, 0.7000],
 ].map(([x, y], index) => ({
   id: `roi-screw-${index + 1}`,
   name: `Screw #${index + 1}`,
