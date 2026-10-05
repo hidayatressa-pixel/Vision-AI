@@ -273,6 +273,39 @@ export function useCamera(options: UseCameraOptions = {}) {
     };
   }, [selectedDeviceId, isVirtualMode, sourceMode, startCamera, stopLocalStream]); // Stable dependencies: no object/function recreation
 
+  // Attach a remote phone MediaStream to the same video element used by the
+  // existing Vision pipeline. OpenCV does not need to know where the frames came from.
+  const attachRemoteStream = useCallback(async (stream: MediaStream) => {
+    if (streamRef.current && streamRef.current !== stream) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+    }
+
+    setIsVirtualMode(false);
+    streamRef.current = stream;
+    currentDeviceIdRef.current = 'REMOTE_PHONE';
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.srcObject = stream;
+    try {
+      await video.play();
+    } catch {
+      // The browser may require a user gesture before playback.
+    }
+
+    const syncVideoDimensions = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+      }
+    };
+
+    if (video.readyState >= 1) syncVideoDimensions();
+    video.addEventListener('loadedmetadata', syncVideoDimensions, { once: true });
+    setCameraState('streaming');
+    setErrorMessage('');
+  }, []);
+
   // Capture current frame as ImageData from video or virtual canvas
   const captureFrame = useCallback((): ImageData | null => {
     if (!canvasRef.current) return null;
