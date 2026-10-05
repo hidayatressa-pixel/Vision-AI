@@ -25,6 +25,7 @@ interface CameraCalibrationViewProps {
   remotePeerId: string;
   remoteStatus: 'idle' | 'starting' | 'waiting' | 'connected' | 'error';
   phoneCameraUrl: string;
+  videoRef: React.Ref<HTMLVideoElement>;
 }
 
 export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
@@ -42,6 +43,7 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
   remotePeerId,
   remoteStatus,
   phoneCameraUrl,
+  videoRef,
 }) => {
   const [lightingStats, setLightingStats] = useState<{ mean: number; variance: number }>({
     mean: 120,
@@ -111,6 +113,28 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
         <div className="bg-emerald-950/80 border border-emerald-500 rounded-xl p-3 text-xs font-mono text-emerald-300 flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{calibratedMessage}</span>
+        </div>
+      )}
+
+      {sourceMode === 'PHONE_REMOTE' && (
+        <div className="bg-black border border-cyan-500/30 rounded-2xl overflow-hidden">
+          <div className="px-4 py-2 border-b border-slate-800 text-[10px] font-mono text-cyan-300">
+            REMOTE PHONE CAMERA PREVIEW
+          </div>
+          <div className="aspect-video">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-contain"
+            />
+          </div>
+          <div className="px-4 py-2 text-[10px] font-mono text-slate-500">
+            {remoteStatus === 'connected'
+              ? 'WEBRTC STREAM RECEIVED — Vision pipeline can process this frame.'
+              : 'Waiting for WebRTC video stream from phone...'}
+          </div>
         </div>
       )}
 
