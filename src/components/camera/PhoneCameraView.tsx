@@ -25,15 +25,22 @@ export const PhoneCameraView: React.FC = () => {
           throw new Error('Camera API is not available in this browser.');
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30, max: 60 },
-          },
+        // Start with the least restrictive camera request. Some Android browsers
+        // can leave a high-resolution/framerate constraint request pending instead
+        // of rejecting it. We can still use the native camera resolution for Vision.
+        const streamPromise = navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
           audio: false,
         });
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          window.setTimeout(
+            () => reject(new Error('Camera request timed out. Check browser camera permission and try again.')),
+            15000
+          );
+        });
+
+        const stream = await Promise.race([streamPromise, timeoutPromise]);
 
         if (cancelled) {
           stream.getTracks().forEach((track) => track.stop());
@@ -55,7 +62,15 @@ export const PhoneCameraView: React.FC = () => {
         console.error('Phone camera connection error:', error);
         if (!cancelled) {
           setStatus('error');
-          setMessage(error instanceof Error ? error.message : 'Unable to start phone camera.');
+          const errorName = error instanceof DOMException ? error.name : '';
+          if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
+            setMessage('Camera permission is blocked. Allow camera access for this site, then reload this page.');
+          } else if (errorName === 'NotFoundError') {
+            setMessage('No camera was found on this phone.');
+          } else if (errorName === 'NotReadableError' || errorName === 'AbortError') {
+            setMessage('The camera is busy or unavailable. Close other camera apps and reload.');
+          } else {
+            setMessage(error instanceof Error ? error.message : 'Unable to start phone camera.');
         }
       }
     };
