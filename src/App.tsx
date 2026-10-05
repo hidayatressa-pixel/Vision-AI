@@ -84,7 +84,7 @@ export default function App() {
   }, [cameraSourceMode, remoteSession, camera.attachRemoteStream]);
 
   const phoneCameraUrl = remotePeerId
-    ? `${window.location.origin}${import.meta.env.BASE_URL}camera?camera=phone&session=${encodeURIComponent(remotePeerId)}`
+    ? `${window.location.origin}${import.meta.env.BASE_URL}?camera=phone&session=${encodeURIComponent(remotePeerId)}`
     : '';
 
   const loadMasters = async () => {
