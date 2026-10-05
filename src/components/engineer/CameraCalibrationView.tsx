@@ -3,39 +3,52 @@
  * Verifies stand lighting, resolution, focus, and device selection.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { Camera, Sun, Sliders, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { CameraDevice } from '../../hooks/useCamera';
 import { getRegionStats, toGrayscale } from '../../vision/imageUtils';
+import { CAMERA_SOURCE_OPTIONS, CameraSourceMode } from '../../types/device';
 
 interface CameraCalibrationViewProps {
   devices: CameraDevice[];
   selectedDeviceId: string;
   setSelectedDeviceId: (id: string) => void;
+  sourceMode: CameraSourceMode;
+  setSourceMode: (mode: CameraSourceMode) => void;
   cameraState: string;
   fps: number;
   videoDimensions: { width: number; height: number };
   captureFrame: () => ImageData | null;
   calibrateBackground: () => void;
   onSwitchToStandSimulator: () => void;
+  remotePeerId: string;
+  remoteStatus: 'idle' | 'starting' | 'waiting' | 'connected' | 'error';
+  phoneCameraUrl: string;
 }
 
 export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
   devices,
   selectedDeviceId,
   setSelectedDeviceId,
+  sourceMode,
+  setSourceMode,
   cameraState,
   fps,
   videoDimensions,
   captureFrame,
   calibrateBackground,
   onSwitchToStandSimulator,
+  remotePeerId,
+  remoteStatus,
+  phoneCameraUrl,
 }) => {
   const [lightingStats, setLightingStats] = useState<{ mean: number; variance: number }>({
     mean: 120,
     variance: 450,
   });
   const [calibratedMessage, setCalibratedMessage] = useState<string | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
 
   // Monitor lighting & contrast
   useEffect(() => {
@@ -58,6 +71,18 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
 
   const isLightingAdequate = lightingStats.mean >= 40 && lightingStats.mean <= 220;
   const isContrastAdequate = lightingStats.variance >= 100;
+
+  useEffect(() => {
+    if (sourceMode !== 'PHONE_REMOTE' || !phoneCameraUrl) {
+      setQrCodeUrl('');
+      return;
+    }
+    QRCode.toDataURL(phoneCameraUrl, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+    }).then(setQrCodeUrl).catch(() => setQrCodeUrl(''));
+  }, [sourceMode, phoneCameraUrl]);
 
   return (
     <div className="space-y-6">
@@ -97,7 +122,23 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
             <span>Camera Device</span>
           </div>
 
-          {devices.length > 0 ? (
+          <select
+            value={sourceMode}
+            onChange={(e) => setSourceMode(e.target.value as CameraSourceMode)}
+            className="w-full bg-slate-950 text-white font-mono text-xs border border-slate-700 rounded-lg p-2.5 focus:border-cyan-500"
+          >
+            {CAMERA_SOURCE_OPTIONS.map((option) => (
+              <option key={option.mode} value={option.mode}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
+          <p className="text-[10px] text-slate-500 font-mono leading-relaxed">
+            {CAMERA_SOURCE_OPTIONS.find((option) => option.mode === sourceMode)?.description}
+          </p>
+
+          {sourceMode === 'LOCAL_CAMERA' && devices.length > 0 && (
             <select
               value={selectedDeviceId}
               onChange={(e) => setSelectedDeviceId(e.target.value)}
@@ -109,9 +150,37 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
                 </option>
               ))}
             </select>
-          ) : (
-            <div className="text-xs font-mono text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-              Default Environment Camera
+          )}
+
+          {sourceMode === 'PHONE_REMOTE' && (
+            <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-3 space-y-2">
+              <div className="text-[10px] font-mono text-cyan-300">
+                PHONE LINK: {remoteStatus === 'connected' ? 'CONNECTED' : remoteStatus === 'error' ? 'ERROR' : 'WAITING FOR PHONE'}
+              </div>
+              {phoneCameraUrl ? (
+                <>
+                  {qrCodeUrl && (
+                    <div className="flex justify-center rounded-xl bg-white p-2 w-fit">
+                      <img src={qrCodeUrl} alt="Vision AI phone pairing QR code" className="w-44 h-44" />
+                    </div>
+                  )}
+                  <div className="text-[10px] text-slate-400 font-mono break-all select-all">{phoneCameraUrl}</div>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    Open this link on the phone. The phone only captures video; Vision processing stays on this laptop.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText(phoneCameraUrl)}
+                    className="px-2.5 py-1.5 rounded-lg bg-cyan-500 text-slate-950 text-[10px] font-bold"
+                  >
+                    Copy phone link
+                  </button>
+                </>
+              ) : (
+                <div className="text-[10px] text-amber-300 font-mono">
+                  Creating secure WebRTC session...
+                </div>
+              )}
             </div>
           )}
 

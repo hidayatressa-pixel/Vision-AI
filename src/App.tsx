@@ -2,7 +2,7 @@
  * Realtime Vision Inspection System
  * Manufacturing zero-touch automated visual inspection platform.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActiveTab, Navbar, UserRole } from './components/Navbar';
 import { CameraCalibrationView } from './components/engineer/CameraCalibrationView';
 import { MasterManager } from './components/engineer/MasterManager';
@@ -18,8 +18,19 @@ import { soundService } from './services/audio';
 import { dbService } from './services/db';
 import { initSeedDataIfEmpty, SEED_PRODUCT_A } from './services/sampleData';
 import { MasterProduct, MasterRevision } from './types/master';
+import { CameraSourceMode } from './types/device';
+import { createRemoteCameraSession } from './services/remoteCamera';
+import { PhoneCameraView } from './components/camera/PhoneCameraView';
+
+function isPhoneCameraRoute() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('camera') === 'phone' && Boolean(params.get('session'));
+}
 
 export default function App() {
+  if (isPhoneCameraRoute()) {
+    return <PhoneCameraView />;
+  }
   const [activeTab, setActiveTab] = useState<ActiveTab>('INSPECTION');
   const [role] = useState<UserRole>('OPERATOR');
   const [isMuted, setIsMuted] = useState(false);
@@ -30,10 +41,51 @@ export default function App() {
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [setupMaster, setSetupMaster] = useState<MasterProduct | null>(null);
   const [setupRevision, setSetupRevision] = useState<MasterRevision | null>(null);
+  const [cameraSourceMode, setCameraSourceMode] = useState<CameraSourceMode>('LOCAL_CAMERA');
+  const [remotePeerId, setRemotePeerId] = useState('');
+  const [remoteStatus, setRemoteStatus] = useState<'idle' | 'starting' | 'waiting' | 'connected' | 'error'>('idle');
+  const remoteSession = useMemo(() => createRemoteCameraSession(), []);
 
   const cameraOptions = React.useMemo(() => ({ preferredFacingMode: 'environment' as const, preferredResolution: { width: 800, height: 600 } }), []);
-  const camera = useCamera(cameraOptions);
+  const camera = useCamera({ ...cameraOptions, sourceMode: cameraSourceMode });
   const pipeline = useInspectionPipeline({ activeMaster, activeRevision, captureFrame: camera.captureFrame, cameraState: camera.cameraState, fps: camera.fps });
+
+  useEffect(() => {
+    if (cameraSourceMode !== 'PHONE_REMOTE') {
+      remoteSession.stop();
+      setRemotePeerId('');
+      setRemoteStatus('idle');
+      return;
+    }
+
+    let cancelled = false;
+    setRemoteStatus('starting');
+
+    remoteSession
+      .startController((stream) => {
+        if (cancelled) return;
+        camera.attachRemoteStream(stream);
+        setRemoteStatus('connected');
+      })
+      .then((peerId) => {
+        if (cancelled) return;
+        setRemotePeerId(peerId);
+        setRemoteStatus('waiting');
+      })
+      .catch((error) => {
+        console.error('Remote camera controller error:', error);
+        if (!cancelled) setRemoteStatus('error');
+      });
+
+    return () => {
+      cancelled = true;
+      remoteSession.stop();
+    };
+  }, [cameraSourceMode, remoteSession, camera.attachRemoteStream]);
+
+  const phoneCameraUrl = remotePeerId
+    ? `${window.location.origin}${import.meta.env.BASE_URL}camera?camera=phone&session=${encodeURIComponent(remotePeerId)}`
+    : '';
 
   const loadMasters = async () => {
     await initSeedDataIfEmpty();
@@ -90,7 +142,7 @@ export default function App() {
         {activeTab === 'HISTORY' && <InspectionHistoryView onRefreshStats={loadMasters} />}
         {activeTab === 'SETTINGS' && <SettingsView onNavigate={setActiveTab} onClose={() => setActiveTab('INSPECTION')} />}
         {activeTab === 'MASTERS' && <MasterManager masters={masters} activeMaster={activeMaster} activeRevision={activeRevision} onSelectMaster={handleSelectMaster} onRefreshMasters={loadMasters} onOpenSetupModal={handleOpenSetupModal} onCreateNewMaster={handleCreateNewMaster} />}
-        {activeTab === 'CAMERA_SETUP' && <CameraCalibrationView devices={camera.devices} selectedDeviceId={camera.selectedDeviceId} setSelectedDeviceId={camera.setSelectedDeviceId} cameraState={camera.cameraState} fps={camera.fps} videoDimensions={camera.videoDimensions} captureFrame={camera.captureFrame} calibrateBackground={pipeline.calibrateBackground} onSwitchToStandSimulator={() => camera.enableVirtualMode('PERFECT_PASS')} />}
+        {activeTab === 'CAMERA_SETUP' && <CameraCalibrationView devices={camera.devices} selectedDeviceId={camera.selectedDeviceId} setSelectedDeviceId={camera.setSelectedDeviceId} sourceMode={cameraSourceMode} setSourceMode={setCameraSourceMode} cameraState={camera.cameraState} remotePeerId={remotePeerId} remoteStatus={remoteStatus} phoneCameraUrl={phoneCameraUrl} fps={camera.fps} videoDimensions={camera.videoDimensions} captureFrame={camera.captureFrame} calibrateBackground={pipeline.calibrateBackground} onSwitchToStandSimulator={() => camera.enableVirtualMode('PERFECT_PASS')} />}
         {activeTab === 'PLC_SETUP' && <PLCConfigurationView />}
         {activeTab === 'DIAGNOSTICS' && <DiagnosticsModal metrics={pipeline.liveMetrics} />}
       </main>
