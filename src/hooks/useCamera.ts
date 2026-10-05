@@ -273,6 +273,29 @@ export function useCamera(options: UseCameraOptions = {}) {
     };
   }, [selectedDeviceId, isVirtualMode, sourceMode, startCamera, stopLocalStream]); // Stable dependencies: no object/function recreation
 
+  // Keep the video element lifecycle independent from the WebRTC connection.
+  // The inspection screen can be mounted/unmounted while the remote stream is already
+  // connected (for example when switching from Camera Setup to Inspection). A callback
+  // ref guarantees the stored MediaStream is attached whenever the <video> element exists.
+  const setVideoElement = useCallback((video: HTMLVideoElement | null) => {
+    videoRef.current = video;
+    if (!video || !streamRef.current) return;
+
+    video.srcObject = streamRef.current;
+    void video.play().catch(() => {
+      // The browser may require a user gesture before playback.
+    });
+
+    const syncVideoDimensions = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+      }
+    };
+
+    if (video.readyState >= 1) syncVideoDimensions();
+    video.addEventListener('loadedmetadata', syncVideoDimensions, { once: true });
+  }, []);
+
   // Attach a remote phone MediaStream to the same video element used by the
   // existing Vision pipeline. OpenCV does not need to know where the frames came from.
   const attachRemoteStream = useCallback(async (stream: MediaStream) => {
@@ -285,23 +308,28 @@ export function useCamera(options: UseCameraOptions = {}) {
     currentDeviceIdRef.current = 'REMOTE_PHONE';
 
     const video = videoRef.current;
-    if (!video) return;
+    if (video) {
+      video.srcObject = stream;
+    }
+    if (video) {
+      try {
+        await video.play();
+      } catch {
+        // The browser may require a user gesture before playback.
+      }
 
-    video.srcObject = stream;
-    try {
-      await video.play();
-    } catch {
-      // The browser may require a user gesture before playback.
+      const syncVideoDimensions = () => {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+        }
+      };
+
+      if (video.readyState >= 1) syncVideoDimensions();
+      video.addEventListener('loadedmetadata', syncVideoDimensions, { once: true });
     }
 
-    const syncVideoDimensions = () => {
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
-      }
-    };
-
-    if (video.readyState >= 1) syncVideoDimensions();
-    video.addEventListener('loadedmetadata', syncVideoDimensions, { once: true });
+    // Mark the transport as streaming even if the inspection <video> element is
+    // temporarily unmounted. The callback ref above will attach the stream later.
     setCameraState('streaming');
     setErrorMessage('');
   }, []);
@@ -344,7 +372,7 @@ export function useCamera(options: UseCameraOptions = {}) {
   }, [cameraState, isVirtualMode, sourceMode, videoDimensions, virtualScenario]);
 
   return {
-    videoRef,
+    videoRef: setVideoElement,
     canvasRef,
     devices,
     selectedDeviceId,
