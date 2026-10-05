@@ -18,6 +18,7 @@ import { soundService } from './services/audio';
 import { dbService } from './services/db';
 import { initSeedDataIfEmpty, SEED_PRODUCT_A } from './services/sampleData';
 import { MasterProduct, MasterRevision } from './types/master';
+import { CameraSourceMode } from './types/device';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('INSPECTION');
@@ -30,9 +31,10 @@ export default function App() {
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [setupMaster, setSetupMaster] = useState<MasterProduct | null>(null);
   const [setupRevision, setSetupRevision] = useState<MasterRevision | null>(null);
+  const [cameraSourceMode, setCameraSourceMode] = useState<CameraSourceMode>('LOCAL_CAMERA');
 
   const cameraOptions = React.useMemo(() => ({ preferredFacingMode: 'environment' as const, preferredResolution: { width: 800, height: 600 } }), []);
-  const camera = useCamera(cameraOptions);
+  const camera = useCamera({ ...cameraOptions, sourceMode: cameraSourceMode });
   const pipeline = useInspectionPipeline({ activeMaster, activeRevision, captureFrame: camera.captureFrame, cameraState: camera.cameraState, fps: camera.fps });
 
   const loadMasters = async () => {
@@ -90,7 +92,7 @@ export default function App() {
         {activeTab === 'HISTORY' && <InspectionHistoryView onRefreshStats={loadMasters} />}
         {activeTab === 'SETTINGS' && <SettingsView onNavigate={setActiveTab} onClose={() => setActiveTab('INSPECTION')} />}
         {activeTab === 'MASTERS' && <MasterManager masters={masters} activeMaster={activeMaster} activeRevision={activeRevision} onSelectMaster={handleSelectMaster} onRefreshMasters={loadMasters} onOpenSetupModal={handleOpenSetupModal} onCreateNewMaster={handleCreateNewMaster} />}
-        {activeTab === 'CAMERA_SETUP' && <CameraCalibrationView devices={camera.devices} selectedDeviceId={camera.selectedDeviceId} setSelectedDeviceId={camera.setSelectedDeviceId} cameraState={camera.cameraState} fps={camera.fps} videoDimensions={camera.videoDimensions} captureFrame={camera.captureFrame} calibrateBackground={pipeline.calibrateBackground} onSwitchToStandSimulator={() => camera.enableVirtualMode('PERFECT_PASS')} />}
+        {activeTab === 'CAMERA_SETUP' && <CameraCalibrationView devices={camera.devices} selectedDeviceId={camera.selectedDeviceId} setSelectedDeviceId={camera.setSelectedDeviceId} sourceMode={cameraSourceMode} setSourceMode={setCameraSourceMode} cameraState={camera.cameraState} fps={camera.fps} videoDimensions={camera.videoDimensions} captureFrame={camera.captureFrame} calibrateBackground={pipeline.calibrateBackground} onSwitchToStandSimulator={() => camera.enableVirtualMode('PERFECT_PASS')} />}
         {activeTab === 'PLC_SETUP' && <PLCConfigurationView />}
         {activeTab === 'DIAGNOSTICS' && <DiagnosticsModal metrics={pipeline.liveMetrics} />}
       </main>
