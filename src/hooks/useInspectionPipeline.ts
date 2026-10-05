@@ -191,7 +191,7 @@ export function useInspectionPipeline({
         plcService.logTimelineEvent(
           'ROI_INSPECTION_STARTED',
           'VISION',
-          `Evaluating ${revision.inspectionROIs.length} transformed screw ROIs`
+          `Evaluating ${revision.inspectionROIs.length} transformed screw ROIs with visual reference verification`
         );
 
         const roiStart = performance.now();
@@ -201,7 +201,9 @@ export function useInspectionPipeline({
           alignment,
           revision.tolerance,
           revision.masterWidth,
-          revision.masterHeight
+          revision.masterHeight,
+          revision.referenceImages || [],
+          frameData
         );
 
         roiResults = inspection.roiResults;
