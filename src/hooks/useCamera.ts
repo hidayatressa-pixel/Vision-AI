@@ -253,7 +253,15 @@ export function useCamera(options: UseCameraOptions = {}) {
       return;
     }
 
-    if (!isVirtualMode && sourceMode !== 'VIRTUAL') {
+    if (sourceMode === 'VIRTUAL') {
+      stopLocalStream();
+      setIsVirtualMode(true);
+      setCameraState('virtual_mode');
+      setVideoDimensions({ width: 800, height: 600 });
+      return;
+    }
+
+    if (!isVirtualMode) {
       startCamera(selectedDeviceId);
     }
 
