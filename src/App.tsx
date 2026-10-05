@@ -23,7 +23,8 @@ import { createRemoteCameraSession } from './services/remoteCamera';
 import { PhoneCameraView } from './components/camera/PhoneCameraView';
 
 function isPhoneCameraRoute() {
-  return window.location.pathname.endsWith('/camera');
+  const params = new URLSearchParams(window.location.search);
+  return params.get('camera') === 'phone' && Boolean(params.get('session'));
 }
 
 export default function App() {
@@ -83,7 +84,7 @@ export default function App() {
   }, [cameraSourceMode, remoteSession, camera.attachRemoteStream]);
 
   const phoneCameraUrl = remotePeerId
-    ? `${window.location.origin}${import.meta.env.BASE_URL}camera?session=${encodeURIComponent(remotePeerId)}`
+    ? `${window.location.origin}${import.meta.env.BASE_URL}camera?camera=phone&session=${encodeURIComponent(remotePeerId)}`
     : '';
 
   const loadMasters = async () => {
