@@ -21,6 +21,9 @@ interface CameraCalibrationViewProps {
   captureFrame: () => ImageData | null;
   calibrateBackground: () => void;
   onSwitchToStandSimulator: () => void;
+  remotePeerId: string;
+  remoteStatus: 'idle' | 'starting' | 'waiting' | 'connected' | 'error';
+  phoneCameraUrl: string;
 }
 
 export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
@@ -35,6 +38,9 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
   captureFrame,
   calibrateBackground,
   onSwitchToStandSimulator,
+  remotePeerId,
+  remoteStatus,
+  phoneCameraUrl,
 }) => {
   const [lightingStats, setLightingStats] = useState<{ mean: number; variance: number }>({
     mean: 120,
@@ -133,8 +139,29 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
           )}
 
           {sourceMode === 'PHONE_REMOTE' && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-[10px] font-mono text-amber-300">
-              PHONE LINK: waiting for WebRTC pairing. Local camera is intentionally disabled.
+            <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-3 space-y-2">
+              <div className="text-[10px] font-mono text-cyan-300">
+                PHONE LINK: {remoteStatus === 'connected' ? 'CONNECTED' : remoteStatus === 'error' ? 'ERROR' : 'WAITING FOR PHONE'}
+              </div>
+              {phoneCameraUrl ? (
+                <>
+                  <div className="text-[10px] text-slate-400 font-mono break-all select-all">{phoneCameraUrl}</div>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    Open this link on the phone. The phone only captures video; Vision processing stays on this laptop.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText(phoneCameraUrl)}
+                    className="px-2.5 py-1.5 rounded-lg bg-cyan-500 text-slate-950 text-[10px] font-bold"
+                  >
+                    Copy phone link
+                  </button>
+                </>
+              ) : (
+                <div className="text-[10px] text-amber-300 font-mono">
+                  Creating secure WebRTC session...
+                </div>
+              )}
             </div>
           )}
 
