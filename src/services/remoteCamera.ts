@@ -10,30 +10,49 @@ export interface RemoteCameraSession {
 export function createRemoteCameraSession(): RemoteCameraSession {
   let peer: Peer | null = null;
   let call: MediaConnection | null = null;
+
+  const waitForPeerOpen = (nextPeer: Peer) =>
+    new Promise<void>((resolve, reject) => {
+      nextPeer.once('open', () => resolve());
+      nextPeer.once('error', reject);
+    });
+
   return {
     getPeerId: () => peer?.id || '',
+
     waitForController: async (controllerId, stream) => {
+      peer?.destroy();
       peer = new Peer();
-      await new Promise<void>((resolve, reject) => {
-        peer!.on('open', () => resolve());
-        peer!.on('error', reject);
-      });
+      await waitForPeerOpen(peer);
       call = peer.call(controllerId, stream);
-    },
-    startController: async (onStream) => {
-      const id = 'vision-' + crypto.randomUUID().slice(0, 8);
-      peer = new Peer(id);
-      await new Promise<void>((resolve, reject) => {
-        peer!.on('open', () => resolve());
-        peer!.on('error', reject);
+      call.on('close', () => {
+        call = null;
       });
-      peer.on('call', incoming => {
+    },
+
+    startController: async (onStream) => {
+      peer?.destroy();
+      peer = new Peer();
+      await waitForPeerOpen(peer);
+
+      peer.on('call', (incoming) => {
+        call?.close();
         call = incoming;
         incoming.answer();
         incoming.on('stream', onStream);
+        incoming.on('close', () => {
+          if (call === incoming) call = null;
+        });
       });
+
       return peer.id;
     },
-    stop: () => { call?.close(); peer?.destroy(); call = null; peer = null; },
+
+    stop: () => {
+      call?.close();
+      peer?.destroy();
+      call = null;
+      peer = null;
+    },
   };
 }
