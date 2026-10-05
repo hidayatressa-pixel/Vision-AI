@@ -247,9 +247,14 @@ export function useCamera(options: UseCameraOptions = {}) {
   // Only start camera on mount or when switching selectedDeviceId or exiting virtual mode
   useEffect(() => {
     if (sourceMode === 'PHONE_REMOTE') {
-      stopLocalStream();
+      // Do not call stopLocalStream() on every effect rerun. Once the
+      // WebRTC phone stream is attached, cameraState changes can rerun this
+      // effect and would otherwise stop the live remote MediaStream.
+      if (currentDeviceIdRef.current !== 'REMOTE_PHONE') {
+        stopLocalStream();
+      }
       setIsVirtualMode(false);
-      setCameraState('remote_waiting');
+      setCameraState((current) => (current === 'streaming' ? current : 'remote_waiting'));
       return;
     }
 
