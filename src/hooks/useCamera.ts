@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { drawWorkpieceToCanvas, TestScenarioType } from '../vision/testGenerator';
+import { CameraSourceMode } from '../types/device';
 
 export interface CameraDevice {
   deviceId: string;
@@ -15,6 +16,7 @@ export interface CameraDevice {
 export interface UseCameraOptions {
   preferredFacingMode?: 'environment' | 'user';
   preferredResolution?: { width: number; height: number };
+  sourceMode?: CameraSourceMode;
 }
 
 export function useCamera(options: UseCameraOptions = {}) {
@@ -23,6 +25,7 @@ export function useCamera(options: UseCameraOptions = {}) {
   const streamRef = useRef<MediaStream | null>(null);
   const optionsRef = useRef<UseCameraOptions>(options);
   optionsRef.current = options;
+  const sourceMode = options.sourceMode || 'LOCAL_CAMERA';
 
   const currentDeviceIdRef = useRef<string>('');
   const isStartingRef = useRef<boolean>(false);
@@ -30,7 +33,7 @@ export function useCamera(options: UseCameraOptions = {}) {
   const [devices, setDevices] = useState<CameraDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [cameraState, setCameraState] = useState<
-    'initializing' | 'streaming' | 'error' | 'permission_denied' | 'virtual_mode'
+    'initializing' | 'streaming' | 'error' | 'permission_denied' | 'virtual_mode' | 'remote_waiting'
   >('initializing');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [fps, setFps] = useState<number>(0);
@@ -38,6 +41,18 @@ export function useCamera(options: UseCameraOptions = {}) {
     width: 800,
     height: 600,
   });
+
+  // Remote-phone mode intentionally stops local capture until the WebRTC
+  // transport attaches a remote MediaStream. The Vision pipeline remains
+  // unchanged because it still consumes captureFrame().
+  const stopLocalStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    currentDeviceIdRef.current = '';
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }, []);
 
   // Virtual test generator mode for offline / stand simulation
   const [virtualScenario, setVirtualScenario] = useState<TestScenarioType>('PERFECT_PASS');
@@ -200,6 +215,26 @@ export function useCamera(options: UseCameraOptions = {}) {
     setVideoDimensions({ width: 800, height: 600 });
   }, []);
 
+  // Select the physical/remote/virtual camera source.
+  const setCameraSourceMode = useCallback((mode: CameraSourceMode) => {
+    if (mode === 'PHONE_REMOTE') {
+      stopLocalStream();
+      setIsVirtualMode(false);
+      setCameraState('remote_waiting');
+      setErrorMessage('Waiting for phone camera pairing.');
+      return;
+    }
+
+    if (mode === 'VIRTUAL') {
+      enableVirtualMode(virtualScenario);
+      return;
+    }
+
+    setIsVirtualMode(false);
+    setCameraState('initializing');
+    setErrorMessage('');
+  }, [enableVirtualMode, stopLocalStream, virtualScenario]);
+
   // Switch to physical camera mode
   const enablePhysicalCamera = useCallback(() => {
     // Let the state transition trigger the stable startup effect. Calling
@@ -211,7 +246,14 @@ export function useCamera(options: UseCameraOptions = {}) {
 
   // Only start camera on mount or when switching selectedDeviceId or exiting virtual mode
   useEffect(() => {
-    if (!isVirtualMode) {
+    if (sourceMode === 'PHONE_REMOTE') {
+      stopLocalStream();
+      setIsVirtualMode(false);
+      setCameraState('remote_waiting');
+      return;
+    }
+
+    if (!isVirtualMode && sourceMode !== 'VIRTUAL') {
       startCamera(selectedDeviceId);
     }
 
@@ -221,7 +263,7 @@ export function useCamera(options: UseCameraOptions = {}) {
         streamRef.current = null;
       }
     };
-  }, [selectedDeviceId, isVirtualMode]); // Stable dependencies: no object/function recreation
+  }, [selectedDeviceId, isVirtualMode, sourceMode, startCamera, stopLocalStream]); // Stable dependencies: no object/function recreation
 
   // Capture current frame as ImageData from video or virtual canvas
   const captureFrame = useCallback((): ImageData | null => {
@@ -238,7 +280,9 @@ export function useCamera(options: UseCameraOptions = {}) {
       canvas.height = h;
     }
 
-    if (isVirtualMode || cameraState === 'virtual_mode') {
+    if (cameraState === 'remote_waiting') return null;
+
+    if (isVirtualMode || cameraState === 'virtual_mode' || sourceMode === 'VIRTUAL') {
       drawWorkpieceToCanvas(ctx, w, h, virtualScenario);
     } else if (videoRef.current && videoRef.current.readyState >= 2) {
       ctx.drawImage(videoRef.current, 0, 0, w, h);
@@ -256,7 +300,7 @@ export function useCamera(options: UseCameraOptions = {}) {
     }
 
     return ctx.getImageData(0, 0, w, h);
-  }, [cameraState, isVirtualMode, videoDimensions, virtualScenario]);
+  }, [cameraState, isVirtualMode, sourceMode, videoDimensions, virtualScenario]);
 
   return {
     videoRef,
@@ -275,5 +319,7 @@ export function useCamera(options: UseCameraOptions = {}) {
     enableVirtualMode,
     enablePhysicalCamera,
     startCamera,
+    sourceMode,
+    setCameraSourceMode,
   };
 }
