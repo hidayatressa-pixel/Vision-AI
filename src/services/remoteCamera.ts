@@ -1,1 +1,39 @@
-import Peer, { MediaConnection } from 'peerjs';\n\nexport type RemoteCameraRole = 'controller' | 'camera';\n\nexport interface RemoteCameraController {\n  peerId: string;\n  connectionState: 'idle' | 'waiting' | 'connected' | 'error';\n  errorMessage: string;\n  startController: () => Promise<string>;\n  acceptRemoteStream: (video: HTMLVideoElement) => void;\n  stop: () => void;\n}\n\n/**\n * Lightweight WebRTC transport for the hackathon MVP.\n * The phone sends its MediaStream directly to the laptop; video frames do not\n * pass through the signaling service.\n */\nexport function createRemoteCameraTransport(role: RemoteCameraRole): RemoteCameraController {\n  let peer: Peer | null = null;\n  let activeCall: MediaConnection | null = null;\n  let remoteVideo: HTMLVideoElement | null = null;\n  let state: RemoteCameraController['connectionState'] = 'idle';\n  let errorMessage = '';\n\n  const setRemoteVideo = (stream: MediaStream) => {\n    if (!remoteVideo) return;\n    remoteVideo.srcObject = stream;\n    void remoteVideo.play().catch(() => undefined);\n  };\n\n  return {\n    peerId: '',\n    get connectionState() { return state; },\n    get errorMessage() { return errorMessage; },\n    startController: async () => {\n      if (role !== 'controller') throw new Error('Only the controller can create a pairing session.');\n      state = 'waiting';\n      errorMessage = '';\n      const id = 'vision-' + crypto.randomUUID().slice(0, 8);\n      peer = new Peer(id);\n      return await new Promise<string>((resolve, reject) => {\n        peer!.on('open', (openedId) => resolve(openedId));\n        peer!.on('error', (err) => { state = 'error'; errorMessage = err.message; reject(err); });\n        peer!.on('call', (call) => {\n          activeCall = call;\n          call.answer();\n          call.on('stream', (stream) => { state = 'connected'; setRemoteVideo(stream); });\n          call.on('close', () => { state = 'waiting'; });\n        });\n      });\n    },\n    acceptRemoteStream: (video) => { remoteVideo = video; },\n    stop: () => {\n      activeCall?.close();\n      peer?.destroy();\n      activeCall = null;\n      peer = null;\n      state = 'idle';\n      errorMessage = '';\n    },\n  };\n}
+import Peer, { MediaConnection } from 'peerjs';
+
+export interface RemoteCameraSession {
+  getPeerId: () => string;
+  waitForController: (controllerId: string, stream: MediaStream) => Promise<void>;
+  startController: (onStream: (stream: MediaStream) => void) => Promise<string>;
+  stop: () => void;
+}
+
+export function createRemoteCameraSession(): RemoteCameraSession {
+  let peer: Peer | null = null;
+  let call: MediaConnection | null = null;
+  return {
+    getPeerId: () => peer?.id || '',
+    waitForController: async (controllerId, stream) => {
+      peer = new Peer();
+      await new Promise<void>((resolve, reject) => {
+        peer!.on('open', () => resolve());
+        peer!.on('error', reject);
+      });
+      call = peer.call(controllerId, stream);
+    },
+    startController: async (onStream) => {
+      const id = 'vision-' + crypto.randomUUID().slice(0, 8);
+      peer = new Peer(id);
+      await new Promise<void>((resolve, reject) => {
+        peer!.on('open', () => resolve());
+        peer!.on('error', reject);
+      });
+      peer.on('call', incoming => {
+        call = incoming;
+        incoming.answer();
+        incoming.on('stream', onStream);
+      });
+      return peer.id;
+    },
+    stop: () => { call?.close(); peer?.destroy(); call = null; peer = null; },
+  };
+}
