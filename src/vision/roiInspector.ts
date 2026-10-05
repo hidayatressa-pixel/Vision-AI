@@ -70,7 +70,11 @@ export class ROIInspector {
         roi.toleranceRadius * Math.min(frame.width, frame.height)
       );
 
-      const searchRadius = toleranceRadiusPx * 1.5;
+      // HARD ROI BOUNDARY: only the configured screw tolerance zone may
+      // influence the screw decision. Do not expand the search outside the
+      // engineer-defined zone because nearby brackets, edges, holes, or
+      // background features must never become screw candidates.
+      const searchRadius = toleranceRadiusPx;
 
       // 2. Scan localized search neighborhood for circular screw signature
       const detection = this.detectScrewInRegion(
@@ -143,18 +147,14 @@ export class ROIInspector {
       });
     }
 
-    // 4. Scan for extra unexpected screws within the workpiece region
-    const extraObjects = this.scanForExtraScrews(
-      frame,
-      edges,
-      rois,
-      alignment,
-      detectedScrewPositions,
-      tolerance,
-      masterWidth,
-      masterHeight,
-      configuredMaxOffsetPx
-    );
+    // 4. Product rule: this master defines exactly the expected screw
+    // positions. Do not globally scan the surrounding workpiece for "extra"
+    // circles. That behavior is intentionally disabled because surrounding
+    // holes, edges, reflections, brackets, and other circular features are
+    // not screw defects unless they belong to an explicitly configured ROI.
+    //
+    // The eight configured ROIs are the inspection scope.
+    const extraObjects: ExtraDetectedObject[] = [];
 
     return {
       roiResults: results,
