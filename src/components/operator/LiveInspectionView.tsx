@@ -31,7 +31,7 @@ import { MetricsBar } from './MetricsBar';
 import { StatusDisplay } from './StatusDisplay';
 
 interface LiveInspectionViewProps {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
+  videoRef: React.Ref<HTMLVideoElement>;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   cameraState: string;
   errorMessage: string;
