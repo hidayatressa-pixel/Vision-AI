@@ -3,7 +3,8 @@
  * Verifies stand lighting, resolution, focus, and device selection.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { Camera, Sun, Sliders, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { CameraDevice } from '../../hooks/useCamera';
 import { getRegionStats, toGrayscale } from '../../vision/imageUtils';
@@ -47,6 +48,7 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
     variance: 450,
   });
   const [calibratedMessage, setCalibratedMessage] = useState<string | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
 
   // Monitor lighting & contrast
   useEffect(() => {
@@ -69,6 +71,18 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
 
   const isLightingAdequate = lightingStats.mean >= 40 && lightingStats.mean <= 220;
   const isContrastAdequate = lightingStats.variance >= 100;
+
+  useEffect(() => {
+    if (sourceMode !== 'PHONE_REMOTE' || !phoneCameraUrl) {
+      setQrCodeUrl('');
+      return;
+    }
+    QRCode.toDataURL(phoneCameraUrl, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+    }).then(setQrCodeUrl).catch(() => setQrCodeUrl(''));
+  }, [sourceMode, phoneCameraUrl]);
 
   return (
     <div className="space-y-6">
@@ -145,6 +159,11 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
               </div>
               {phoneCameraUrl ? (
                 <>
+                  {qrCodeUrl && (
+                    <div className="flex justify-center rounded-xl bg-white p-2 w-fit">
+                      <img src={qrCodeUrl} alt="Vision AI phone pairing QR code" className="w-44 h-44" />
+                    </div>
+                  )}
                   <div className="text-[10px] text-slate-400 font-mono break-all select-all">{phoneCameraUrl}</div>
                   <div className="text-[10px] text-slate-500 font-mono">
                     Open this link on the phone. The phone only captures video; Vision processing stays on this laptop.
