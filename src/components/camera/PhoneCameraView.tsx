@@ -71,6 +71,7 @@ export const PhoneCameraView: React.FC = () => {
             setMessage('The camera is busy or unavailable. Close other camera apps and reload.');
           } else {
             setMessage(error instanceof Error ? error.message : 'Unable to start phone camera.');
+          }
         }
       }
     };
