@@ -137,6 +137,13 @@ class DatabaseService {
   }
 
   public async getRecentInspections(limit = 500): Promise<InspectionRecord[]> {
+    // Cloud history is optional for local camera/vision development. If
+    // Supabase is not configured, return an empty history instead of allowing
+    // the dashboard/statistics layer to crash the whole application.
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      return [];
+    }
+
     const rows = await this.request<any[]>(`?select=*&order=timestamp.desc&limit=${Math.max(1, Math.min(limit, 5000))}`);
     return rows.map((row) => this.fromCloudRecord(row));
   }
