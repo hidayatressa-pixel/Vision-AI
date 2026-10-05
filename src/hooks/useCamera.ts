@@ -360,6 +360,7 @@ export function useCamera(options: UseCameraOptions = {}) {
     enableVirtualMode,
     enablePhysicalCamera,
     startCamera,
+    attachRemoteStream,
     sourceMode,
     setCameraSourceMode,
   };
