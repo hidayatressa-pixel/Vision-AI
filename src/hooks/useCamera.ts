@@ -309,24 +309,45 @@ export function useCamera(options: UseCameraOptions = {}) {
 
     const video = videoRef.current;
     if (video) {
+      video.srcObject = null;
       video.srcObject = stream;
-    }
-    if (video) {
-      try {
-        await video.play();
-      } catch {
-        // The browser may require a user gesture before playback.
-      }
+      video.muted = true;
+      video.autoplay = true;
+      video.playsInline = true;
 
       const syncVideoDimensions = () => {
         if (video.videoWidth > 0 && video.videoHeight > 0) {
-          setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+          setVideoDimensions({
+            width: video.videoWidth,
+            height: video.videoHeight,
+          });
         }
       };
 
-      if (video.readyState >= 1) syncVideoDimensions();
+      const startPlayback = async () => {
+        syncVideoDimensions();
+        try {
+          await video.play();
+        } catch (error) {
+          console.warn('Remote video autoplay/playback warning:', error);
+        }
+        syncVideoDimensions();
+      };
+
       video.addEventListener('loadedmetadata', syncVideoDimensions, { once: true });
+      video.addEventListener('canplay', startPlayback, { once: true });
+      void startPlayback();
     }
+
+    console.info(
+      'Remote phone stream received:',
+      stream.getTracks().map((track) => ({
+        kind: track.kind,
+        readyState: track.readyState,
+        enabled: track.enabled,
+        muted: track.muted,
+      }))
+    );
 
     // Mark the transport as streaming even if the inspection <video> element is
     // temporarily unmounted. The callback ref above will attach the stream later.
