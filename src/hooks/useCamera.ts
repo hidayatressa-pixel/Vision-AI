@@ -308,12 +308,14 @@ export function useCamera(options: UseCameraOptions = {}) {
     currentDeviceIdRef.current = 'REMOTE_PHONE';
 
     const video = videoRef.current;
-    if (video) {
-      video.srcObject = null;
-      video.srcObject = stream;
+    if (video && video.srcObject !== stream) {
+      // Do not clear srcObject before assigning the remote stream. Clearing it
+      // can abort an in-flight play() call and causes the browser's
+      // "play() request was interrupted by a new load request" race.
       video.muted = true;
       video.autoplay = true;
       video.playsInline = true;
+      video.srcObject = stream;
 
       const syncVideoDimensions = () => {
         if (video.videoWidth > 0 && video.videoHeight > 0) {
@@ -326,16 +328,20 @@ export function useCamera(options: UseCameraOptions = {}) {
 
       const startPlayback = async () => {
         syncVideoDimensions();
+        if (video.srcObject !== stream) return;
         try {
           await video.play();
         } catch (error) {
-          console.warn('Remote video autoplay/playback warning:', error);
+          // AbortError is harmless when the element is replaced/unmounted.
+          // Other errors are useful diagnostics.
+          if (error instanceof DOMException && error.name === 'AbortError') return;
+          console.warn('Remote video playback warning:', error);
         }
         syncVideoDimensions();
       };
 
       video.addEventListener('loadedmetadata', syncVideoDimensions, { once: true });
-      video.addEventListener('canplay', startPlayback, { once: true });
+      video.addEventListener('loadeddata', startPlayback, { once: true });
       void startPlayback();
     }
 
