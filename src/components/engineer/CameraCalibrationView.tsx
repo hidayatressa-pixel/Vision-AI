@@ -7,11 +7,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Camera, Sun, Sliders, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { CameraDevice } from '../../hooks/useCamera';
 import { getRegionStats, toGrayscale } from '../../vision/imageUtils';
+import { CAMERA_SOURCE_OPTIONS, CameraSourceMode } from '../../types/device';
 
 interface CameraCalibrationViewProps {
   devices: CameraDevice[];
   selectedDeviceId: string;
   setSelectedDeviceId: (id: string) => void;
+  sourceMode: CameraSourceMode;
+  setSourceMode: (mode: CameraSourceMode) => void;
   cameraState: string;
   fps: number;
   videoDimensions: { width: number; height: number };
@@ -24,6 +27,8 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
   devices,
   selectedDeviceId,
   setSelectedDeviceId,
+  sourceMode,
+  setSourceMode,
   cameraState,
   fps,
   videoDimensions,
@@ -97,7 +102,23 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
             <span>Camera Device</span>
           </div>
 
-          {devices.length > 0 ? (
+          <select
+            value={sourceMode}
+            onChange={(e) => setSourceMode(e.target.value as CameraSourceMode)}
+            className="w-full bg-slate-950 text-white font-mono text-xs border border-slate-700 rounded-lg p-2.5 focus:border-cyan-500"
+          >
+            {CAMERA_SOURCE_OPTIONS.map((option) => (
+              <option key={option.mode} value={option.mode}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
+          <p className="text-[10px] text-slate-500 font-mono leading-relaxed">
+            {CAMERA_SOURCE_OPTIONS.find((option) => option.mode === sourceMode)?.description}
+          </p>
+
+          {sourceMode === 'LOCAL_CAMERA' && devices.length > 0 && (
             <select
               value={selectedDeviceId}
               onChange={(e) => setSelectedDeviceId(e.target.value)}
@@ -109,9 +130,11 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
                 </option>
               ))}
             </select>
-          ) : (
-            <div className="text-xs font-mono text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-              Default Environment Camera
+          )}
+
+          {sourceMode === 'PHONE_REMOTE' && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-[10px] font-mono text-amber-300">
+              PHONE LINK: waiting for WebRTC pairing. Local camera is intentionally disabled.
             </div>
           )}
 
