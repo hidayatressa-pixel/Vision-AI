@@ -2,7 +2,7 @@
  * Industrial Top Navigation Bar
  */
 import React from 'react';
-import { ScanLine, ClipboardCheck, Volume2, VolumeX, Wifi, RefreshCw, Settings } from 'lucide-react';
+import { ScanLine, ClipboardCheck, Volume2, VolumeX, Wifi, RefreshCw, Settings, Cloud, Cpu } from 'lucide-react';
 import { MasterProduct, MasterRevision } from '../types/master';
 import { getRuntimeIdentity } from '../services/runtimeConfig';
 
@@ -30,8 +30,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeM
         <button onClick={() => setActiveTab('INSPECTION')} className="flex items-center gap-3 min-w-0 text-left">
           <div className="rvi-brand-mark shrink-0"><ScanLine className="w-5 h-5" strokeWidth={1.8} /></div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2"><span className="font-semibold text-sm sm:text-[15px] tracking-wide text-white truncate">VISION STATION</span><span className="hidden xl:inline-flex items-center gap-1.5 text-[10px] font-semibold tracking-wider px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> ONLINE</span></div>
-            {activeMaster && activeRevision ? <div className="flex items-center gap-2 text-[11px] text-slate-400 truncate"><span className="text-cyan-300 font-medium truncate">{activeMaster.productCode}</span><span className="text-slate-600">/</span><span className="font-mono text-slate-300">{activeRevision.revisionCode}</span><span className="text-slate-600">/</span><span>{activeRevision.expectedObjectCount} inspection points</span><span className="text-slate-600">/</span><span className="font-mono text-slate-500">{identity.stationId}</span></div> : <div className="text-[11px] text-amber-400">No active master</div>}
+            <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold text-sm sm:text-[15px] tracking-wide text-white truncate">VISION-AI AWS</span><span className="rvi-aws-badge"><Cloud className="w-3 h-3" /> AWS HACKATHON</span><span className="hidden xl:inline-flex items-center gap-1.5 text-[10px] font-semibold tracking-wider px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> ONLINE</span></div>
+            {activeMaster && activeRevision ? <div className="flex items-center gap-2 text-[11px] text-slate-400 truncate"><span className="text-cyan-300 font-medium truncate">{activeMaster.productCode}</span><span className="text-slate-600">/</span><span className="font-mono text-slate-300">{activeRevision.revisionCode}</span><span className="text-slate-600">/</span><span>{activeRevision.expectedObjectCount} inspection points</span><span className="text-slate-600">/</span><span className="font-mono text-slate-500">{identity.stationId}</span><span className="rvi-aws-meta hidden sm:inline-flex items-center gap-1"><Cpu className="w-3 h-3" /> OpenCV 5 · Lambda</span></div> : <div className="text-[11px] text-amber-400">No active master</div>}
           </div>
         </button>
 
