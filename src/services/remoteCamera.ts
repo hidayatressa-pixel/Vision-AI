@@ -7,6 +7,8 @@ export interface RemoteCameraSession {
   stop: () => void;
 }
 
+const WEBRTC_VERBOSE_DIAGNOSTICS = new URLSearchParams(window.location.search).get('webrtcDebug') === '1';
+
 type DebugPeerConnection = RTCPeerConnection & {
   __visionStatsTimer?: number;
   __visionCleanup?: () => void;
@@ -33,6 +35,7 @@ function attachWebRtcDiagnostics(call: MediaConnection, role: 'controller' | 'ph
   };
 
   const logReceivers = () => {
+    if (!WEBRTC_VERBOSE_DIAGNOSTICS) return;
     const receivers = connection.getReceivers();
     console.info('[WEBRTC] receivers', {
       role,
@@ -48,6 +51,7 @@ function attachWebRtcDiagnostics(call: MediaConnection, role: 'controller' | 'ph
   };
 
   const logStats = async () => {
+    if (!WEBRTC_VERBOSE_DIAGNOSTICS) return;
     try {
       const stats = await connection.getStats();
       const inboundVideo: Record<string, unknown>[] = [];
@@ -131,11 +135,11 @@ function attachWebRtcDiagnostics(call: MediaConnection, role: 'controller' | 'ph
   logReceivers();
   void logStats();
 
-  const timer = window.setInterval(() => {
+  const timer = WEBRTC_VERBOSE_DIAGNOSTICS ? window.setInterval(() => {
     void logStats();
-  }, 2000);
+  }, 2000) : 0;
 
-  connection.__visionStatsTimer = timer;
+  connection.__visionStatsTimer = timer || undefined;
   connection.__visionCleanup = () => {
     window.clearInterval(timer);
     connection.__visionStatsTimer = undefined;
