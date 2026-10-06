@@ -20,7 +20,7 @@ body {
 /* Realtime Vision Inspection - Industrial UI system                          */
 /* -------------------------------------------------------------------------- */
 .rvi-app {
-  --rvi-bg: #0b1015;
+  --rvi-bg: #07111f;
   --rvi-surface: #131a21;
   --rvi-surface-2: #18212a;
   --rvi-surface-3: #202b35;
@@ -33,9 +33,18 @@ body {
   --rvi-ok: #26b77c;
   --rvi-ng: #e45a61;
   --rvi-warn: #e7a63a;
-  background:
-    radial-gradient(circle at 85% -20%, rgba(49, 182, 171, 0.07), transparent 36%),
-    linear-gradient(180deg, #0b1015 0%, #0d1319 100%);
+  background-color: #07111f;
+  background-image:
+    radial-gradient(circle at 8% 8%, rgba(56, 189, 248, 0.14), transparent 30%),
+    radial-gradient(circle at 92% 2%, rgba(255, 153, 0, 0.11), transparent 24%),
+    radial-gradient(circle at 72% 78%, rgba(49, 182, 171, 0.10), transparent 34%),
+    linear-gradient(135deg, #07111f 0%, #0a1728 42%, #0b111b 100%),
+    linear-gradient(rgba(56, 189, 248, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.025) 1px, transparent 1px);
+  background-size: auto, auto, auto, auto, 44px 44px, 44px 44px;
+  background-attachment: fixed;
+  position: relative;
+  overflow-x: hidden;
 }
 
 .rvi-app .bg-slate-950 { background-color: #0b1015; }
@@ -304,4 +313,80 @@ body {
   .rvi-app .animate-ping {
     animation: none !important;
   }
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* AWS Hackathon visual identity                                               */
+/* -------------------------------------------------------------------------- */
+.rvi-app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 18% 42%, rgba(56,189,248,.07), transparent 22%),
+    radial-gradient(circle at 88% 62%, rgba(255,153,0,.055), transparent 20%);
+}
+
+.rvi-aws-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid rgba(56,189,248,.28);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(8,31,53,.88), rgba(15,31,43,.72));
+  color: #8bdcff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  line-height: 1;
+  box-shadow: inset 0 0 18px rgba(56,189,248,.045);
+}
+
+.rvi-aws-badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ff9900;
+  box-shadow: 0 0 10px rgba(255,153,0,.45);
+}
+
+.rvi-aws-meta {
+  color: #6fa9c7;
+}
+
+.rvi-topbar {
+  background:
+    linear-gradient(90deg, rgba(7,17,31,.96), rgba(9,24,39,.93), rgba(7,17,31,.96));
+  border-bottom-color: rgba(56,189,248,.18);
+}
+
+.rvi-topbar::after {
+  background: linear-gradient(90deg, transparent, rgba(56,189,248,.36), rgba(255,153,0,.20), transparent);
+}
+
+.rvi-brand-mark {
+  border-color: rgba(56,189,248,.30);
+  background: linear-gradient(145deg, rgba(56,189,248,.12), rgba(49,182,171,.07));
+  color: #67d5ff;
+}
+
+.rvi-inspection-stage {
+  border-color: rgba(56,189,248,.18);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(56,189,248,.06), transparent 42%),
+    #050b13;
+  box-shadow: 0 24px 70px rgba(0,0,0,.34), 0 0 0 1px rgba(56,189,248,.035);
+}
+
+.rvi-app .bg-slate-950 {
+  background-color: #07111f;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rvi-app::before { display: none; }
 }
