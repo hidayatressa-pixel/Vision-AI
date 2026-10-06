@@ -33,10 +33,10 @@ export class RuleEngine {
   ): RuleEvaluationResult {
     const defects: DefectItem[] = [];
 
-    // 1. Alignment is part of the product inspection path. If the configured
-    // reference cannot be located, fail safe as Product NG rather than exposing
-    // a user-facing SYSTEM ERROR. Genuine infrastructure failures are handled
-    // separately by the pipeline/PLC watchdog.
+    // 1. Alignment is a prerequisite for a valid product judgement.
+    // Failure to locate the reference does NOT prove the product is defective.
+    // It is an INVALID inspection result; infrastructure/runtime failures are
+    // handled separately by the pipeline/PLC watchdog.
     if (!alignment.success) {
       defects.push({
         code: 'ALIGNMENT_FAILED',
@@ -46,8 +46,8 @@ export class RuleEngine {
       });
 
       return {
-        judgement: 'NG',
-        primaryReason: alignment.errorMessage || 'Alignment Failed: Reference fiducials not found',
+        judgement: 'INVALID',
+        primaryReason: alignment.errorMessage || 'Inspection Invalid: reference fiducials could not be confirmed',
         defects,
         expectedCount: revision.expectedObjectCount,
         detectedCount: 0,
@@ -121,6 +121,24 @@ export class RuleEngine {
     }
 
     // 5. Final Judgement
+    // Ambiguous required-ROI evidence is not proof of a product defect.
+    const hasUncertainRequiredRoi = roiResults.some(
+      (roi) =>
+        roi.status === 'WARNING' &&
+        !roi.isPresent &&
+        revision.inspectionROIs.find((configured) => configured.id === roi.roiId)?.isRequired
+    );
+
+    if (hasUncertainRequiredRoi) {
+      return {
+        judgement: 'INVALID',
+        primaryReason: 'Inspection Invalid: vision evidence was insufficient to confirm one or more required ROIs',
+        defects,
+        expectedCount,
+        detectedCount: presentScrewCount,
+      };
+    }
+
     if (defects.length === 0) {
       return {
         judgement: 'OK',
