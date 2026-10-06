@@ -104,6 +104,13 @@ export default function App() {
   }, []);
 
   const handleSelectMaster = (master: MasterProduct, revisionId?: string) => {
+    // Do not allow master/revision changes during an active inspection cycle.
+    // This keeps the selected configuration aligned with the physical part
+    // and prevents an operator action from bypassing the inspection latch.
+    if (pipeline.state !== 'WAITING_FOR_PART') {
+      return;
+    }
+
     setActiveMaster(master);
     const revId = revisionId || master.activeRevisionId;
     setActiveRevision(master.revisions.find((r) => r.id === revId) || master.revisions[0]);
