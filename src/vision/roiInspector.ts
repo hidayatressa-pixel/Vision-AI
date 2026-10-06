@@ -36,16 +36,19 @@ function clamp01(value: number): number {
 
 function signatureSimilarity(a: VisualSignature, b: VisualSignature): number {
   const weights = {
-    centerContrast: 0.20,
-    edgeDensity: 0.20,
-    circularity: 0.18,
-    brightness: 0.10,
-    centerBrightness: 0.08,
-    ringBrightness: 0.08,
-    colorR: 0.04,
-    colorG: 0.04,
-    colorB: 0.04,
-    saturation: 0.04,
+    // Structure is more trustworthy than absolute appearance. Lighting,
+    // exposure and paint fade can change brightness/color without changing
+    // the identity of the screw.
+    centerContrast: 0.24,
+    edgeDensity: 0.27,
+    circularity: 0.24,
+    brightness: 0.04,
+    centerBrightness: 0.03,
+    ringBrightness: 0.03,
+    colorR: 0.02,
+    colorG: 0.02,
+    colorB: 0.02,
+    saturation: 0.09,
   };
 
   const distance =
@@ -435,7 +438,10 @@ export class ROIInspector {
         // A reference image is evidence, not a pixel template. The candidate
         // survives only when its visual characteristics are reasonably similar.
         const confidence = Math.min(0.99, geometryConfidence * 0.45 + visualSimilarity * 0.55);
-        if (visualSimilarity >= 0.48 && confidence >= 0.55) {
+        // A permissive similarity threshold makes circular holes, reflections,
+        // and washers dangerous false positives. Keep the reference tolerant,
+        // but require enough structural agreement before declaring PRESENT.
+        if (visualSimilarity >= 0.60 && confidence >= 0.62) {
           return { isPresent: true, center: cvCandidate.center, confidence, evidence: 'PRESENT' };
         }
       } else if (geometryConfidence >= 0.55) {
@@ -513,6 +519,10 @@ export class ROIInspector {
       confidence = Math.min(0.99, Math.max(0.2, (bestScore - 20) / 90));
     }
 
+    // Geometry alone is only a candidate. The final PRESENT decision below
+    // must also survive the visual-reference gate when a golden reference is
+    // configured. This prevents a strong circular edge from becoming a screw
+    // merely because it is geometrically convincing.
     let isPresent = confidence >= 0.55 && bestCenter !== null;
 
     if (isPresent && referenceSignature && bestCenter) {
@@ -522,8 +532,9 @@ export class ROIInspector {
       );
       // Do not call a circle a screw when its visual signature is too far from
       // the golden reference. The threshold is intentionally tolerant of
-      // lighting, paint fade, and minor deformation.
-      isPresent = visualSimilarity >= 0.48;
+      // lighting, paint fade, and minor deformation, but must reject weak
+      // look-alikes such as holes and reflections.
+      isPresent = visualSimilarity >= 0.60;
       confidence = Math.min(0.99, confidence * (0.45 + visualSimilarity * 0.55));
     }
 
