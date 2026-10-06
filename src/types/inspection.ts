@@ -72,6 +72,8 @@ export interface ROIInspectionResult {
   isWithinTolerance: boolean;
   confidence: number;
   isPresent: boolean;
+  /** Evidence classification prevents low-confidence absence from becoming automatic NG. */
+  evidence: 'PRESENT' | 'ABSENT' | 'UNCERTAIN';
   status: 'PASS' | 'FAIL' | 'WARNING';
   failureReason?: string;
 }
