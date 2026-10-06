@@ -83,6 +83,7 @@ export function useInspectionPipeline({
   // Internal state tracking
   const presenceDetectorRef = useRef<PresenceDetector>(new PresenceDetector());
   const isProcessingRef = useRef<boolean>(false);
+  const isResettingPlcRef = useRef<boolean>(false);
   const detectionStartTimeRef = useRef<number>(0);
   const cycleStartTimeRef = useRef<number>(0);
   const activeMasterRef = useRef<MasterProduct | null>(activeMaster);
@@ -639,22 +640,37 @@ export function useInspectionPipeline({
       // another inspection while the part is still physically present.
       // The only reset condition is confirmed part removal from the detection zone.
       if (awaitingRemoval) {
-        if (!presence.isPartPresent) {
-          presenceDetectorRef.current.resetPartState();
-          plcService.clearInterlock();
-          setState('WAITING_FOR_PART');
-          setCurrentResult(null);
-          setLatestAlignment(null);
-          setLatestRoiResults([]);
-          setLatestExtraObjects([]);
-          setStabilizationProgress(0);
-          setMotionDelta(0);
-          detectionStartTimeRef.current = 0;
-          cycleStartTimeRef.current = 0;
+        if (!presence.isPartPresent && !isResettingPlcRef.current) {
+          // The physical part is gone, but the inspection latch stays active
+          // until the PLC confirms that its interlock was actually reset.
+          // This prevents a failed reset from opening a new inspection cycle.
+          isResettingPlcRef.current = true;
+          void plcService.clearInterlock().then((resetOk) => {
+            if (resetOk) {
+              presenceDetectorRef.current.resetPartState();
+              setState('WAITING_FOR_PART');
+              setCurrentResult(null);
+              setLatestAlignment(null);
+              setLatestRoiResults([]);
+              setLatestExtraObjects([]);
+              setStabilizationProgress(0);
+              setMotionDelta(0);
+              detectionStartTimeRef.current = 0;
+              cycleStartTimeRef.current = 0;
+            } else {
+              setState('SYSTEM_ERROR');
+            }
+          }).catch((error) => {
+            console.error('[InspectionPipeline] PLC interlock reset failed:', error);
+            setState('SYSTEM_ERROR');
+          }).finally(() => {
+            isResettingPlcRef.current = false;
+          });
         }
 
-        // IMPORTANT: while awaiting removal, presence detection is the only
-        // active vision task. Screw/ROI judgement is completely suspended.
+        // IMPORTANT: while awaiting removal or PLC reset confirmation,
+        // presence detection is the only active vision task. Screw/ROI
+        // judgement is completely suspended.
         return;
       }
 
