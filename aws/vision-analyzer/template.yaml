@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Vision-AI AWS evidence analyzer using OpenCV 5 in Lambda.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 1536
+
+Resources:
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  VisionAnalyzerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: ./vision-analyzer
+      DockerTag: opencv5
+    Properties:
+      PackageType: Image
+      Environment:
+        Variables:
+          OUTPUT_PREFIX: results/
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref EvidenceBucket
+        - S3WritePolicy:
+            BucketName: !Ref EvidenceBucket
+      Events:
+        IncomingImage:
+          Type: S3
+          Properties:
+            Bucket: !Ref EvidenceBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: incoming/
+        DemoApi:
+          Type: Api
+          Properties:
+            Path: /analyze
+            Method: post
+
+Outputs:
+  EvidenceBucketName:
+    Value: !Ref EvidenceBucket
+  VisionAnalyzerApi:
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/analyze
