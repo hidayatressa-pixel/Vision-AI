@@ -94,8 +94,7 @@ export function useCamera(options: UseCameraOptions = {}) {
       if (
         streamRef.current &&
         streamRef.current.active &&
-        currentDeviceIdRef.current === targetDevice &&
-        cameraState === 'streaming'
+        currentDeviceIdRef.current === targetDevice
       ) {
         return;
       }
@@ -199,7 +198,7 @@ export function useCamera(options: UseCameraOptions = {}) {
         isStartingRef.current = false;
       }
     },
-    [isVirtualMode, refreshDevices, cameraState]
+    [isVirtualMode, refreshDevices]
   );
 
   // Switch to virtual simulation mode
