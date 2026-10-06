@@ -370,9 +370,10 @@ export function useInspectionPipeline({
         })
         .catch(console.error);
 
-      // 9. Freeze the completed judgement. The live loop owns the lifecycle
-      // from this point: removal or repositioning can re-arm the part without
-      // relying on a stale timeout.
+      // 9. Freeze the completed judgement. The live loop owns the lifecycle.
+      // This result remains locked until the presence detector confirms that
+      // the physical part has been removed from the jig. There is no timeout,
+      // operator reset, or reposition-based reinspection path.
       presenceDetectorRef.current.markPartInspected(
         gray,
         revision.detectionZone
@@ -448,12 +449,11 @@ export function useInspectionPipeline({
 
       const awaitingRemoval = presenceDetectorRef.current.isAwaitingRemoval();
 
-      // Post-judgement lifecycle:
-      // 1) If the part leaves the detection zone, reset normally.
-      // 2) If the same part is moved/corrected while still visible, detect the
-      //    repositioning and immediately re-arm it. This prevents the previous
-      //    OK/NG judgement from staying latched after the operator changes the
-      //    part position.
+      // Post-judgement lifecycle is deliberately one-way:
+      // once a physical part has received a judgement, the result is latched.
+      // Motion, repositioning, or changing the screw condition must NOT trigger
+      // another inspection while the part is still physically present.
+      // The only reset condition is confirmed part removal from the detection zone.
       if (awaitingRemoval) {
         if (!presence.isPartPresent) {
           presenceDetectorRef.current.resetPartState();
@@ -463,45 +463,14 @@ export function useInspectionPipeline({
           setLatestAlignment(null);
           setLatestRoiResults([]);
           setLatestExtraObjects([]);
-          detectionStartTimeRef.current = 0;
-          return;
-        }
-
-        const repositioned = presenceDetectorRef.current.detectPostInspectionReposition(
-          presence.motionDelta,
-          activeRevision.tolerance
-        );
-
-        if (repositioned) {
-          // Invalidate the old judgement immediately. The next stable frame
-          // sequence must go through the complete 6-reference inspection again.
-          presenceDetectorRef.current.rearmCurrentPart(now);
-          plcService.clearInterlock();
-          setState('WAITING_FOR_PART');
-          setCurrentResult(null);
-          setLatestAlignment(null);
-          setLatestRoiResults([]);
-          setLatestExtraObjects([]);
           setStabilizationProgress(0);
-          setMotionDelta(presence.motionDelta);
+          setMotionDelta(0);
           detectionStartTimeRef.current = 0;
           cycleStartTimeRef.current = 0;
-
-          plcService.logTimelineEvent(
-            'PART_REPOSITIONED_REARM',
-            'VISION',
-            'Part movement detected after judgement; previous OK/NG cleared and inspection re-armed'
-          );
-        } else if (
-          state !== 'WAITING_PART_REMOVAL' &&
-          state !== 'JUDGEMENT_OK' &&
-          state !== 'JUDGEMENT_NG' &&
-          state !== 'ALIGNMENT_ERROR' &&
-          state !== 'SYSTEM_ERROR'
-        ) {
-          setState('WAITING_PART_REMOVAL');
         }
 
+        // IMPORTANT: while awaiting removal, presence detection is the only
+        // active vision task. Screw/ROI judgement is completely suspended.
         return;
       }
 
