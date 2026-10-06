@@ -1,154 +1,176 @@
-# Vision Station
+# Vision-AI AWS Hackathon
 
-Industrial vision inspection station for **Reflector Assy HL GJRA**.
+AWS/OpenCV 5 verification implementation for the Vision-AI project.
 
-The application is designed for a fixed camera station where each workpiece is located, aligned against a configured master, inspected at eight screw positions, and classified deterministically as **OK**, **NG**, or **ERROR**.
+This repository contains the **hackathon AWS implementation**. It is intentionally separate from the production repository `Vision-Ai-Prod`, which is maintained independently.
 
-## Core workflow
+## Purpose
 
-1. **Master Setup** — Engineering uploads one approved master image, configures four alignment anchors, eight screw inspection ROIs, tolerances, and exactly six close-up reference images.
-2. **Part Detection** — The camera monitors the configured detection zone and waits for the workpiece to settle.
-3. **Alignment** — Fiducial anchors determine translation, rotation, scale, and residual error before inspection.
-4. **Inspection** — Each of the eight required screw locations is checked for presence, confidence, and position tolerance. Unexpected screw-like objects are also screened.
-5. **Rule Engine** — The configured master remains authoritative. Alignment failures are reported as system errors; part defects produce NG.
-6. **Re-arm** — After a judgement, the station waits for removal or a meaningful replacement/repositioning change before allowing another inspection.
-7. **History** — Inspection results are stored in the shared Supabase cloud database so every station/device can see the same history.
+The AWS version demonstrates that Vision-AI can execute a meaningful image-analysis stage inside AWS using **OpenCV 5**.
 
-## Cloud history setup
+The AWS component is an evidence/verification analyzer, not a replacement for the full production inspection station.
 
-History is now cloud-first. The browser no longer stores inspection history in IndexedDB or uses a local sync queue.
+## Demonstrated architecture
 
-The application uses the Supabase REST Data API with the browser-safe **publishable key**. Supabase recommends exposing only the required tables/functions and protecting them with Row Level Security (RLS). urlSupabase JavaScript installation docshttps://supabase.com/docs/reference/javascript/installing
-
-Create a Supabase project, then run this SQL in its SQL Editor:
-
-```sql
-create table if not exists public.inspection_history (
-  id text primary key,
-  timestamp timestamptz not null,
-  product_id text not null,
-  product_code text not null,
-  product_name text not null,
-  master_id text not null,
-  master_revision_id text not null,
-  master_revision_code text not null,
-  judgement text not null check (judgement in ('OK', 'NG', 'ERROR')),
-  expected_count integer not null,
-  detected_count integer not null,
-  defects jsonb not null default '[]'::jsonb,
-  primary_reason text not null default '',
-  metrics jsonb not null default '{}'::jsonb,
-  alignment jsonb not null default '{}'::jsonb,
-  roi_results jsonb not null default '[]'::jsonb,
-  extra_objects jsonb not null default '[]'::jsonb,
-  thumbnail_base64 text,
-  device_id text not null,
-  operator_id text,
-  sequence_number bigint,
-  plc_interlock_state text,
-  plc_comm_latency_ms numeric,
-  plc_timeline jsonb,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists inspection_history_timestamp_idx
-  on public.inspection_history (timestamp desc);
-create index if not exists inspection_history_product_idx
-  on public.inspection_history (product_id);
-create index if not exists inspection_history_judgement_idx
-  on public.inspection_history (judgement);
-create index if not exists inspection_history_device_idx
-  on public.inspection_history (device_id);
-
-alter table public.inspection_history enable row level security;
-
-drop policy if exists "inspection_history_select" on public.inspection_history;
-drop policy if exists "inspection_history_insert" on public.inspection_history;
-drop policy if exists "inspection_history_update" on public.inspection_history;
-drop policy if exists "inspection_history_delete" on public.inspection_history;
-
-create policy "inspection_history_select"
-  on public.inspection_history for select to anon, authenticated using (true);
-create policy "inspection_history_insert"
-  on public.inspection_history for insert to anon, authenticated with check (true);
-create policy "inspection_history_update"
-  on public.inspection_history for update to anon, authenticated using (true) with check (true);
-create policy "inspection_history_delete"
-  on public.inspection_history for delete to anon, authenticated using (true);
-
-grant select, insert, update, delete on public.inspection_history to anon, authenticated;
+```text
+Image
+  |
+  +--> API Gateway /analyze
+  |          |
+  |          v
+  |       Lambda
+  |          |
+  |          v
+  |       OpenCV 5
+  |          |
+  |          v
+  |       Analysis JSON
+  |
+  +--> S3 incoming/
+             |
+             v
+          Lambda
+             |
+             v
+          OpenCV 5
+             |
+             v
+        S3 results/*.json
 ```
 
-For the current station version, this deliberately permits the publishable client to read/write the history table because the application does not yet have Supabase Auth. **Use this only on the controlled station network.** Before exposing the app publicly, add authentication and tighten the RLS policies.
+### Processing performed by OpenCV 5
 
-Create `.env.local` in the project root:
+The Lambda analyzer performs substantive server-side image processing:
 
-```env
-VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
+1. Decode the image with `cv2.imdecode`
+2. Convert BGR to grayscale
+3. Apply Gaussian blur
+4. Extract edges with Canny
+5. Detect circular candidates with Hough Circles
+6. Calculate edge density
+7. Return dimensions, OpenCV version, candidates, and processing time
+
+The dependency is pinned to:
+
+```text
+opencv-python-headless==5.0.0.93
 ```
 
-Do **not** put a Supabase secret/service-role key in the browser or commit it to GitHub. The browser should use only the publishable key with RLS enabled. urlSupabase API keys guidancehttps://supabase.com/docs/guides/getting-started/api-keys
+The CI pipeline builds the Lambda container and explicitly verifies that the container imports OpenCV 5.
 
-The URL and publishable key can be copied from the Supabase project's Connect/API settings. urlSupabase React quickstarthttps://supabase.com/docs/guides/getting-started/quickstarts/reactjs
+## AWS components
 
-## Engineering configuration
+The SAM template provisions:
 
-Settings are protected by a local engineering password. The engineering area provides:
+- **AWS Lambda** — containerized analyzer.
+- **Amazon S3** — evidence images under `incoming/` and JSON results under `results/`.
+- **API Gateway** — `POST /analyze` demonstration endpoint.
+- **IAM policies** — S3 read/write permissions required by the analyzer.
+- **Lambda container** — AWS Lambda Python 3.12 base image.
 
-- Master and revision management
-- Master image and reference-image upload
-- Four-point fiducial alignment
-- Eight required screw ROIs
-- Position, confidence, rotation, and stabilization tolerances
-- Camera selection and background calibration
-- PLC protocol and interlock configuration
-- Runtime diagnostics
+The S3 event is filtered to `incoming/`, while results are written to `results/`. This keeps generated result objects outside the trigger prefix and avoids recursive invocation.
 
-The operator view is intentionally focused on the live camera inspection and final judgement.
+## Repository separation
 
-## Hardware and integration
+This repository is the **AWS/hackathon side**.
 
-The station supports browser camera input and an engineering simulator for deterministic dry-runs. PLC communication is isolated behind an adapter so a real industrial gateway can be integrated without changing the inspection rule layer.
+The production application is maintained separately in **Vision-Ai-Prod**.
 
-The browser is not a safety controller. Machine safety, guarding, and safety interlocks must remain implemented in the appropriate industrial control and safety hardware.
+The two repositories may share core inspection concepts and vision algorithms, but deployment responsibilities are intentionally separated. This AWS repository is the place for Lambda, S3, API Gateway, SAM, Docker, and AWS-specific verification.
 
-## Local development
+## Local verification
 
-Requirements: Node.js and npm.
+Requirements:
+
+- Python 3.12
+- Docker
+- AWS SAM CLI for deployment
+
+Install dependencies:
 
 ```bash
-npm install
-npm run dev
+python -m pip install -r aws/vision-analyzer/requirements.txt
+python -m pip install pytest
 ```
 
-For a production build:
+Run tests:
 
 ```bash
-npm run build
-npm run preview
+pytest -q aws/vision-analyzer/test_app.py
 ```
 
-## Commissioning checklist
+Build the Lambda container:
 
-Before line use:
+```bash
+docker build -t vision-ai-aws-opencv5 aws/vision-analyzer
+```
 
-- Configure the Supabase project and `.env.local` values.
-- Upload the approved master image.
-- Upload all six approved close-up reference images.
-- Verify all four alignment anchors against the fixture.
-- Verify all eight screw ROIs and their tolerances.
-- Calibrate the empty background under production lighting.
-- Validate OK, missing-screw, position-error, extra-object, alignment-error, and replacement-part scenarios using representative images.
-- Verify an inspection written from one device is visible from a second device.
-- Validate camera mounting, lighting, PLC handshake, and machine safety with the responsible engineering team.
+Verify OpenCV 5 inside the container:
+
+```bash
+docker run --rm --entrypoint python vision-ai-aws-opencv5 -c "import cv2; print(cv2.__version__); assert cv2.__version__.startswith('5.')"
+```
+
+## AWS deployment
+
+Infrastructure is defined in:
+
+```text
+aws/vision-analyzer/template.yaml
+```
+
+After configuring AWS credentials for the target account:
+
+```bash
+sam build --template-file aws/vision-analyzer/template.yaml
+sam deploy --guided
+```
+
+The deployment creates an S3 evidence bucket, Lambda container function, and API endpoint.
+
+**Cost note:** running the repository locally does not deploy AWS resources. AWS charges can only come from AWS resources/services actually deployed or used in the account. Review the account billing/free-tier status before deploying.
+
+## CI verification
+
+The `aws-opencv5` GitHub Actions job:
+
+1. Installs the AWS analyzer dependencies.
+2. Runs `test_app.py`.
+3. Builds the Lambda Docker image.
+4. Imports OpenCV inside the built Lambda image.
+5. Fails unless the OpenCV major version is 5.
+
+The normal build job also runs frontend lint, the adversarial recognizer audit, and the production build.
+
+CI proves the implementation and container build; it does **not** by itself prove a live AWS deployment.
+
+## Hackathon evidence status
+
+- [x] OpenCV 5 dependency and runtime proof
+- [x] Meaningful OpenCV image processing
+- [x] AWS Lambda component
+- [x] S3 event-driven processing path
+- [x] API Gateway demonstration path
+- [x] Automated OpenCV 5 tests
+- [x] Lambda container build in CI
+- [x] Adversarial recognizer audit in CI
+- [ ] Live AWS deployment and end-to-end execution evidence
+- [ ] Final screenshot/log/API evidence for the submitted demo
+
+The last two items remain intentionally unchecked until the actual AWS deployment is executed and verified.
 
 ## Project structure
 
-- `src/vision` — alignment, presence, ROI inspection, OpenCV-assisted detection, and rule evaluation
-- `src/hooks` — camera and inspection pipeline orchestration
-- `src/components` — operator, engineering, settings, history, and integration interfaces
-- `src/services` — cloud history persistence, master/runtime configuration, audio, and PLC adapters
-- `public/master-images` — reserved for approved master assets supplied during commissioning
+```text
+aws/vision-analyzer/
+├── app.py
+├── Dockerfile
+├── requirements.txt
+├── template.yaml
+└── test_app.py
 
-This repository intentionally contains no bundled production reference imagery until the approved master asset is committed during commissioning.
+.github/workflows/ci.yml
+README.md
+```
+
+Keep AWS-specific implementation, deployment configuration, and evidence tooling on the AWS side.
