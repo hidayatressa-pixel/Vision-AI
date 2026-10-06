@@ -36,6 +36,8 @@ interface LiveInspectionViewProps {
   cameraState: string;
   errorMessage: string;
   fps: number;
+  processingFps: number;
+  setProcessingFps: (fps: number) => void;
   videoDimensions: { width: number; height: number };
   state: InspectionMachineState;
   stabilizationProgress: number;
@@ -67,6 +69,8 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
   cameraState,
   errorMessage,
   fps,
+  processingFps,
+  setProcessingFps,
   videoDimensions,
   state,
   stabilizationProgress,
@@ -306,7 +310,9 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
               />
               {cameraState === 'virtual_mode' ? 'STAND SIMULATOR' : 'LIVE CAMERA'}
               <span className="text-slate-400">·</span>
-              <span className="text-cyan-400">{fps} FPS</span>
+              <span className="text-cyan-400">CAM {fps} FPS</span>
+              <span className="text-slate-400">·</span>
+              <span className="text-amber-300">DET {processingFps} FPS</span>
             </span>
 
             {latestAlignment && (
@@ -321,6 +327,19 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
 
           {role === 'ENGINEER' && (
             <div className="flex items-center gap-2 pointer-events-auto">
+              <label className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-[10px] font-mono text-slate-400">
+                DET FPS
+                <select value={processingFps} onChange={(e) => setProcessingFps(Number(e.target.value))}
+                  className="bg-transparent text-amber-300 outline-none">
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={15}>15</option>
+                </select>
+              </label>
+
               <button
                 onClick={() => setShowOverlays(!showOverlays)}
                 title={showOverlays ? 'Hide Inspection Overlays' : 'Show Inspection Overlays'}
