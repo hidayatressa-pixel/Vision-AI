@@ -20,7 +20,6 @@ export class PresenceDetector {
   private stabilizationStartTime: number | null = null;
   private isCurrentlyPresent: boolean = false;
   private hasInspectedCurrentPart: boolean = false;
-  private inspectedPartStats: { mean: number; variance: number } | null = null;
 
   public setBaseline(stats: { mean: number; variance: number }) {
     this.baselineStats = stats;
@@ -29,26 +28,12 @@ export class PresenceDetector {
   public resetPartState() {
     this.isCurrentlyPresent = false;
     this.hasInspectedCurrentPart = false;
-    this.inspectedPartStats = null;
     this.stabilizationStartTime = null;
     this.prevFrame = null;
   }
 
-  public markPartInspected(
-    inspectedFrame?: GrayscaleImage,
-    detectionZone?: Box2D
-  ) {
+  public markPartInspected() {
     this.hasInspectedCurrentPart = true;
-
-    if (inspectedFrame && detectionZone) {
-      const rx = detectionZone.x * inspectedFrame.width;
-      const ry = detectionZone.y * inspectedFrame.height;
-      const rw = detectionZone.width * inspectedFrame.width;
-      const rh = detectionZone.height * inspectedFrame.height;
-      this.inspectedPartStats = getRegionStats(inspectedFrame, rx, ry, rw, rh);
-    } else {
-      this.inspectedPartStats = null;
-    }
   }
 
   /**
