@@ -427,13 +427,28 @@ class PLCService {
     return { interlockGranted, ackReceived: ackOk, commLatencyMs };
   }
 
-  // Clear interlock for next part
-  public async clearInterlock(): Promise<void> {
+  // Clear interlock for next part. The local state may only become
+  // WAITING_INSPECTION after the PLC confirms the reset. If the reset fails,
+  // keep the station blocked and surface a communication fault.
+  public async clearInterlock(): Promise<boolean> {
     this.currentSignals.processPermit = false;
-    this.handshakeState.interlockState = 'WAITING_INSPECTION';
-    await this.adapter.resetInterlock();
-    this.logTimelineEvent('PART_REMOVED', 'PLC', 'Part removed from station · Ready for next product');
+
+    const resetOk = await this.adapter.resetInterlock();
+
+    if (resetOk) {
+      this.handshakeState.interlockState = 'WAITING_INSPECTION';
+      this.logTimelineEvent('PART_REMOVED', 'PLC', 'Part removed from station · Ready for next product');
+    } else {
+      this.handshakeState.interlockState = 'COMMUNICATION_FAULT';
+      this.logTimelineEvent(
+        'INTERLOCK_RESET_FAILED',
+        'INTERLOCK',
+        'Part was removed, but PLC interlock reset was not confirmed; station remains blocked'
+      );
+    }
+
     this.notify();
+    return resetOk;
   }
 }
 
