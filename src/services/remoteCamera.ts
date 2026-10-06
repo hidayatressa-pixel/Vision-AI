@@ -18,7 +18,7 @@ function attachWebRtcDiagnostics(call: MediaConnection, role: 'controller' | 'ph
   }).peerConnection as DebugPeerConnection | undefined;
 
   if (!connection) {
-    console.warn('[WEBRTC] peerConnection is not exposed by PeerJS', { role });
+    console.warn('[WEBRTC] peerConnection is not ready yet', { role });
     return;
   }
 
@@ -143,6 +143,24 @@ function attachWebRtcDiagnostics(call: MediaConnection, role: 'controller' | 'ph
   };
 }
 
+function attachWebRtcDiagnosticsWhenReady(
+  call: MediaConnection,
+  role: 'controller' | 'phone',
+) {
+  const connection = (call as MediaConnection & {
+    peerConnection?: RTCPeerConnection;
+  }).peerConnection;
+
+  if (connection) {
+    attachWebRtcDiagnostics(call, role);
+    return;
+  }
+
+  window.setTimeout(() => {
+    attachWebRtcDiagnostics(call, role);
+  }, 0);
+}
+
 export function createRemoteCameraSession(): RemoteCameraSession {
   let peer: Peer | null = null;
   let call: MediaConnection | null = null;
@@ -162,7 +180,10 @@ export function createRemoteCameraSession(): RemoteCameraSession {
       await waitForPeerOpen(peer);
 
       call = peer.call(controllerId, stream);
-      attachWebRtcDiagnostics(call, 'phone');
+
+      call.on('iceStateChanged', (state) => {
+        console.info('[WEBRTC ICE]', { role: 'phone', state });
+      });
 
       call.on('error', (error) => {
         console.error('[WEBRTC] phone call error', error);
@@ -172,6 +193,8 @@ export function createRemoteCameraSession(): RemoteCameraSession {
         console.info('[WEBRTC] phone call closed');
         call = null;
       });
+
+      attachWebRtcDiagnosticsWhenReady(call, 'phone');
     },
 
     startController: async (onStream) => {
@@ -183,7 +206,9 @@ export function createRemoteCameraSession(): RemoteCameraSession {
         call?.close();
         call = incoming;
 
-        attachWebRtcDiagnostics(incoming, 'controller');
+        incoming.on('iceStateChanged', (state) => {
+          console.info('[WEBRTC ICE]', { role: 'controller', state });
+        });
 
         incoming.on('error', (error) => {
           console.error('[WEBRTC] controller call error', error);
@@ -193,6 +218,10 @@ export function createRemoteCameraSession(): RemoteCameraSession {
         // negotiation cannot deliver the remote MediaStream before the handler exists.
         incoming.on('stream', onStream);
         incoming.answer();
+
+        // PeerJS creates the RTCPeerConnection inside answer().
+        // Attach low-level diagnostics after that connection exists.
+        attachWebRtcDiagnosticsWhenReady(incoming, 'controller');
 
         incoming.on('close', () => {
           console.info('[WEBRTC] controller call closed');
