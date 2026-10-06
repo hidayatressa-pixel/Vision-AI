@@ -20,8 +20,6 @@ export class PresenceDetector {
   private stabilizationStartTime: number | null = null;
   private isCurrentlyPresent: boolean = false;
   private hasInspectedCurrentPart: boolean = false;
-  private postInspectionMotionFrames: number = 0;
-  private postInspectionChangeFrames: number = 0;
   private inspectedPartStats: { mean: number; variance: number } | null = null;
 
   public setBaseline(stats: { mean: number; variance: number }) {
@@ -31,8 +29,6 @@ export class PresenceDetector {
   public resetPartState() {
     this.isCurrentlyPresent = false;
     this.hasInspectedCurrentPart = false;
-    this.postInspectionMotionFrames = 0;
-    this.postInspectionChangeFrames = 0;
     this.inspectedPartStats = null;
     this.stabilizationStartTime = null;
     this.prevFrame = null;
@@ -43,8 +39,6 @@ export class PresenceDetector {
     detectionZone?: Box2D
   ) {
     this.hasInspectedCurrentPart = true;
-    this.postInspectionMotionFrames = 0;
-    this.postInspectionChangeFrames = 0;
 
     if (inspectedFrame && detectionZone) {
       const rx = detectionZone.x * inspectedFrame.width;
@@ -58,52 +52,9 @@ export class PresenceDetector {
   }
 
   /**
-   * Detects intentional part repositioning after a judgement.
-   *
-   * This is deliberately separate from part-removal detection: an operator may
-   * correct an NG/OK part without taking it completely out of the camera view.
-   * A short burst of significant motion re-arms the same physical part so the
-   * normal stabilization -> inspection cycle can run again.
+   * Once a judgement is issued, the physical part remains latched until the
+   * presence detector confirms that it has actually left the jig.
    */
-  public detectPostInspectionReposition(
-    motionDelta: number,
-    tolerance: ToleranceConfig
-  ): boolean {
-    if (!this.hasInspectedCurrentPart || !this.isCurrentlyPresent) return false;
-
-    const baseMotionLimit = tolerance.stabilizationMotionThreshold || 8.0;
-    const repositionThreshold = Math.max(10, baseMotionLimit * 1.35);
-
-    if (motionDelta >= repositionThreshold) {
-      this.postInspectionMotionFrames++;
-    } else {
-      this.postInspectionMotionFrames = Math.max(0, this.postInspectionMotionFrames - 1);
-    }
-
-    // Also allow a replacement part to re-arm when it was swapped while the
-    // camera saw little frame-to-frame motion. This compares the current
-    // detection-zone statistics with the frame that produced the last judgement.
-    // It avoids keeping an old OK/NG latched simply because the operator changed
-    // the part between two visually similar frames.
-    // Require two consecutive high-motion frames to avoid a single noisy frame
-    // instantly clearing a valid judgement. The frame-change path is updated
-    // inside processFrame(), where the detection-zone bounds are available.
-    return this.postInspectionMotionFrames >= 2 || this.postInspectionChangeFrames >= 2;
-  }
-
-  /**
-   * Re-arm the current physical part without requiring removal.
-   * The next frames must settle for the configured stabilization delay before
-   * another judgement can be produced.
-   */
-  public rearmCurrentPart(now: number = Date.now()) {
-    this.hasInspectedCurrentPart = false;
-    this.postInspectionMotionFrames = 0;
-    this.postInspectionChangeFrames = 0;
-    this.inspectedPartStats = null;
-    this.stabilizationStartTime = now;
-  }
-
   public isAwaitingRemoval(): boolean {
     return this.hasInspectedCurrentPart;
   }
@@ -128,26 +79,6 @@ export class PresenceDetector {
     // 2. Motion delta from previous frame
     const motion = calculateMotionDelta(currentFrame, this.prevFrame, detectionZone);
     this.prevFrame = currentFrame;
-
-    if (this.hasInspectedCurrentPart && this.inspectedPartStats) {
-      const meanDiff = Math.abs(stats.mean - this.inspectedPartStats.mean);
-      const stdDiff =
-        Math.abs(Math.sqrt(stats.variance) - Math.sqrt(this.inspectedPartStats.variance));
-      const replacementScore = meanDiff * 0.7 + stdDiff * 0.8;
-      const replacementThreshold = Math.max(
-        10,
-        (tolerance.detectionZonePresenceThreshold || 18) * 0.55
-      );
-
-      if (replacementScore >= replacementThreshold) {
-        this.postInspectionChangeFrames++;
-      } else {
-        this.postInspectionChangeFrames = Math.max(
-          0,
-          this.postInspectionChangeFrames - 1
-        );
-      }
-    }
 
     // 3. Presence calculation
     // A workpiece on an inspection stand changes variance (edges/features) and mean brightness
