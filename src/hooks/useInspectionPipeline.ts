@@ -306,7 +306,7 @@ export function useInspectionPipeline({
       const alignTime = Math.max(...samples.map((sample) => sample.alignmentMs));
       const roiTime = Math.max(...samples.map((sample) => sample.roiMs));
       const ruleTime = Math.max(...samples.map((sample) => sample.ruleMs));
-      const totalInspectionMs = Math.round(performance.now() - cycleStart);
+      const visionInspectionMs = Math.round(performance.now() - cycleStart);
       const validationElapsedMs = Math.round(performance.now() - validationStartedAt);
 
       setLatestAlignment(alignment);
@@ -323,10 +323,7 @@ export function useInspectionPipeline({
       frameData = selected.frame;
 
       // 3. Rule Engine Judgement
-      const ruleStart = performance.now();
-      const evaluation = ruleEngine.evaluate(revision, alignment, roiResults, extraObjects);
-      const ruleTime = performance.now() - ruleStart;
-
+      // The selected consensus evaluation is authoritative for this cycle.
       plcService.logTimelineEvent(
         'INSPECTION_COMPLETE',
         'VISION',
