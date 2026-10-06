@@ -33,7 +33,10 @@ export class RuleEngine {
   ): RuleEvaluationResult {
     const defects: DefectItem[] = [];
 
-    // 1. Check Alignment (Distinguish System/Alignment Error from Product NG)
+    // 1. Alignment is part of the product inspection path. If the configured
+    // reference cannot be located, fail safe as Product NG rather than exposing
+    // a user-facing SYSTEM ERROR. Genuine infrastructure failures are handled
+    // separately by the pipeline/PLC watchdog.
     if (!alignment.success) {
       defects.push({
         code: 'ALIGNMENT_FAILED',
@@ -43,7 +46,7 @@ export class RuleEngine {
       });
 
       return {
-        judgement: 'ERROR',
+        judgement: 'NG',
         primaryReason: alignment.errorMessage || 'Alignment Failed: Reference fiducials not found',
         defects,
         expectedCount: revision.expectedObjectCount,
