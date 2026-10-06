@@ -30,9 +30,9 @@ export class AlignmentEngine {
       };
     }
 
-    // Industrial alignment uses the 4 configured fiducials. Three are the minimum
-    // required for a stable similarity transform while still tolerating one
-    // temporarily occluded/missed anchor.
+    // For production safety, every configured fiducial must be confirmed.
+    // A 3-of-4 transform can still be mathematically valid while one anchor
+    // is wrong or missing, which could shift every downstream ROI incorrectly.
     if (anchors.length < 3) {
       return {
         success: false, translationX: 0, translationY: 0, rotationDeg: 0,
@@ -107,7 +107,8 @@ export class AlignmentEngine {
     // Coarse alignment is followed by a tighter, transform-guided search.
     // This prevents the detector from remaining biased toward the old camera
     // position when the previous product was removed and another one is placed
-    // at a different position in the fixture.
+    // at a different position in the fixture. All configured anchors must
+    // survive refinement; losing one is an alignment failure, not a best-effort fit.
     if (matchedAnchors.length >= 3) {
       const provisional = this.fitSimilarityTransform(matchedAnchors);
       if (provisional) {
@@ -124,7 +125,7 @@ export class AlignmentEngine {
       }
     }
 
-    if (matchedAnchors.length < 3) {
+    if (matchedAnchors.length < anchors.length) {
       return {
         success: false, translationX: 0, translationY: 0, rotationDeg: 0,
         scale: 1,
