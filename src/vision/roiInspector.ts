@@ -21,6 +21,7 @@ interface VisualSignature {
   colorG: number;
   colorB: number;
   saturation: number;
+  centerTexture: number;
 }
 
 interface VisualReferenceProfile {
@@ -48,7 +49,8 @@ function signatureSimilarity(a: VisualSignature, b: VisualSignature): number {
     colorR: 0.02,
     colorG: 0.02,
     colorB: 0.02,
-    saturation: 0.09,
+    saturation: 0.06,
+    centerTexture: 0.12,
   };
 
   const distance =
@@ -61,7 +63,8 @@ function signatureSimilarity(a: VisualSignature, b: VisualSignature): number {
     Math.abs(a.colorR - b.colorR) * weights.colorR +
     Math.abs(a.colorG - b.colorG) * weights.colorG +
     Math.abs(a.colorB - b.colorB) * weights.colorB +
-    Math.abs(a.saturation - b.saturation) * weights.saturation;
+    Math.abs(a.saturation - b.saturation) * weights.saturation +
+    Math.abs(a.centerTexture - b.centerTexture) * weights.centerTexture;
 
   return clamp01(1 - distance);
 }
@@ -113,6 +116,8 @@ function sampleSignature(
   let colorB = 0;
   let saturation = 0;
   let colorCount = 0;
+  let centerTextureSum = 0;
+  let centerTextureCount = 0;
 
   for (let rIndex = 0; rIndex < radial; rIndex++) {
     const radialFactor = 0.18 + (rIndex / (radial - 1)) * 1.02;
@@ -165,6 +170,28 @@ function sampleSignature(
   }
   const circularity = clamp01((circularVariance / angular) * 2.0);
 
+  // Screw heads normally contain local structure (slot/cross/recess/fastener
+  // texture) near the center. A plain hole or a smooth reflection can share
+  // the same outer circle but usually lacks this inner texture.
+  for (let a = 0; a < angular; a++) {
+    const angle = (a * Math.PI * 2) / angular;
+    const nextAngle = ((a + 1) * Math.PI * 2) / angular;
+    const r = Math.max(2, radius * 0.30);
+    const current = readGray(
+      cx + Math.cos(angle) * r,
+      cy + Math.sin(angle) * r
+    ) / 255;
+    const next = readGray(
+      cx + Math.cos(nextAngle) * r,
+      cy + Math.sin(nextAngle) * r
+    ) / 255;
+    centerTextureSum += Math.abs(current - next);
+    centerTextureCount++;
+  }
+  const centerTexture = centerTextureCount
+    ? clamp01(centerTextureSum / centerTextureCount * 4.0)
+    : 0;
+
   return {
     brightness,
     centerBrightness,
@@ -176,6 +203,7 @@ function sampleSignature(
     colorG: colorCount ? colorG / colorCount : 0.5,
     colorB: colorCount ? colorB / colorCount : 0.5,
     saturation: colorCount ? saturation / colorCount : 0,
+    centerTexture,
   };
 }
 
