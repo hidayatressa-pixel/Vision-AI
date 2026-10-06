@@ -439,7 +439,7 @@ export class ROIInspector {
           return { isPresent: true, center: cvCandidate.center, confidence, evidence: 'PRESENT' };
         }
       } else if (geometryConfidence >= 0.55) {
-        return { isPresent: true, center: cvCandidate.center, confidence: geometryConfidence };
+        return { isPresent: true, center: cvCandidate.center, confidence: geometryConfidence, evidence: 'PRESENT' };
       }
     }
 
