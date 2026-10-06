@@ -302,12 +302,7 @@ export class ROIInspector {
       // 3. Evaluate tolerance and confidence
       const minConfidence = roi.minConfidence || tolerance.minScrewConfidence || 0.65;
       const isPresent = detection.isPresent && detection.confidence >= minConfidence;
-      const uncertaintyFloor = Math.max(0.25, minConfidence * 0.55);
-      const evidence: ROIInspectionResult['evidence'] = isPresent
-        ? 'PRESENT'
-        : detection.confidence >= uncertaintyFloor
-          ? 'UNCERTAIN'
-          : 'ABSENT';
+      const evidence: ROIInspectionResult['evidence'] = detection.evidence;
 
       let positionOffsetPx = 0;
       let positionOffsetMm = 0;
@@ -395,7 +390,7 @@ export class ROIInspector {
     openCVCircles: OpenCVCircle[] = [],
     referenceSignature: VisualSignature | null = null,
     colorFrame: ImageData | null = null
-  ): { isPresent: boolean; center: Position2D | null; confidence: number } {
+  ): { isPresent: boolean; center: Position2D | null; confidence: number; evidence: 'PRESENT' | 'ABSENT' | 'UNCERTAIN' } {
     const x0 = Math.max(expectedRadius, Math.floor(expX - searchRadius));
     const y0 = Math.max(expectedRadius, Math.floor(expY - searchRadius));
     const x1 = Math.min(frame.width - expectedRadius, Math.ceil(expX + searchRadius));
@@ -441,7 +436,7 @@ export class ROIInspector {
         // survives only when its visual characteristics are reasonably similar.
         const confidence = Math.min(0.99, geometryConfidence * 0.45 + visualSimilarity * 0.55);
         if (visualSimilarity >= 0.48 && confidence >= 0.55) {
-          return { isPresent: true, center: cvCandidate.center, confidence };
+          return { isPresent: true, center: cvCandidate.center, confidence, evidence: 'PRESENT' };
         }
       } else if (geometryConfidence >= 0.55) {
         return { isPresent: true, center: cvCandidate.center, confidence: geometryConfidence };
@@ -532,10 +527,22 @@ export class ROIInspector {
       confidence = Math.min(0.99, confidence * (0.45 + visualSimilarity * 0.55));
     }
 
+    // Evidence bands deliberately separate "not detected" from "not enough
+    // evidence". A weak candidate must never silently become product NG.
+    // Only an extremely weak signal is treated as ABSENT; the middle band is
+    // explicitly UNCERTAIN and is handled by RuleEngine as INVALID.
+    const uncertaintyFloor = 0.35;
+    const evidence = isPresent
+      ? 'PRESENT'
+      : confidence >= uncertaintyFloor
+        ? 'UNCERTAIN'
+        : 'ABSENT';
+
     return {
       isPresent,
       center: isPresent ? bestCenter : null,
       confidence,
+      evidence,
     };
   }
 
