@@ -364,14 +364,28 @@ export class ROIInspector {
       });
     }
 
-    // 4. Product rule: this master defines exactly the expected screw
-    // positions. Do not globally scan the surrounding workpiece for "extra"
-    // circles. That behavior is intentionally disabled because surrounding
-    // holes, edges, reflections, brackets, and other circular features are
-    // not screw defects unless they belong to an explicitly configured ROI.
+    // 4. Extra-object detection is reference-gated and bounded to the
+    // aligned inspection envelope. We do NOT treat every circle as an extra
+    // screw. A candidate must:
+    //   1) come from OpenCV Hough,
+    //   2) have a screw-like radius,
+    //   3) be outside every expected ROI tolerance zone, and
+    //   4) visually match at least one approved screw reference.
     //
-    // The eight configured ROIs are the inspection scope.
-    const extraObjects: ExtraDetectedObject[] = [];
+    // This catches duplicate/extra screws while rejecting generic holes,
+    // reflections and brackets much more safely than a geometry-only scan.
+    const extraObjects = this.scanForReferenceMatchedExtras(
+      frame,
+      edges,
+      rois,
+      alignment,
+      openCVCircles,
+      referenceProfiles,
+      tolerance,
+      masterWidth,
+      masterHeight,
+      configuredMaxOffsetPx
+    );
 
     return {
       roiResults: results,
@@ -580,25 +594,25 @@ export class ROIInspector {
   }
 
   /**
-   * Scan workpiece area for extra screws not belonging to any expected ROI
+   * Detect extra screws only from reference-matched OpenCV candidates inside
+   * the aligned workpiece envelope. Geometry alone is never enough here.
    */
-  private scanForExtraScrews(
+  private scanForReferenceMatchedExtras(
     frame: GrayscaleImage,
     edges: GrayscaleImage,
     rois: InspectionROI[],
     alignment: AlignmentResult,
-    knownScrewCenters: Position2D[],
+    openCVCircles: OpenCVCircle[],
+    referenceProfiles: Map<string, VisualReferenceProfile>,
     tolerance: ToleranceConfig,
     masterWidth: number,
     masterHeight: number,
     configuredMaxOffsetPx: number
   ): ExtraDetectedObject[] {
-    const extra: ExtraDetectedObject[] = [];
-    const minScrewDistancePx = Math.max(12, configuredMaxOffsetPx * 1.8);
+    if (openCVCircles.length === 0 || referenceProfiles.size === 0 || rois.length === 0) {
+      return [];
+    }
 
-    // Build the search area from the transformed master ROIs instead of assuming
-    // the workpiece is axis-aligned at the frame centre. This keeps extra-object
-    // detection consistent with the alignment transform.
     const transformed = rois.map((roi) =>
       alignmentEngine.transformMasterPoint(
         { x: roi.x, y: roi.y },
@@ -610,55 +624,144 @@ export class ROIInspector {
       )
     );
 
-    if (transformed.length === 0) return extra;
-
     const xs = transformed.map((p) => p.x);
     const ys = transformed.map((p) => p.y);
-    const marginX = Math.max(40, frame.width * 0.06);
-    const marginY = Math.max(40, frame.height * 0.06);
+    const marginX = Math.max(configuredMaxOffsetPx * 2, frame.width * 0.05);
+    const marginY = Math.max(configuredMaxOffsetPx * 2, frame.height * 0.05);
+    const x0 = Math.max(0, Math.floor(Math.min(...xs) - marginX));
+    const y0 = Math.max(0, Math.floor(Math.min(...ys) - marginY));
+    const x1 = Math.min(frame.width - 1, Math.ceil(Math.max(...xs) + marginX));
+    const y1 = Math.min(frame.height - 1, Math.ceil(Math.max(...ys) + marginY));
 
-    const x0 = Math.max(30, Math.floor(Math.min(...xs) - marginX));
-    const y0 = Math.max(30, Math.floor(Math.min(...ys) - marginY));
-    const x1 = Math.min(frame.width - 30, Math.ceil(Math.max(...xs) + marginX));
-    const y1 = Math.min(frame.height - 30, Math.ceil(Math.max(...ys) + marginY));
+    const expectedCenters = rois.map((roi) => ({
+      center: alignmentEngine.transformMasterPoint(
+        { x: roi.x, y: roi.y },
+        frame.width,
+        frame.height,
+        alignment,
+        masterWidth,
+        masterHeight
+      ),
+      radius: roi.radius * Math.min(frame.width, frame.height),
+      toleranceRadius: Math.max(
+        configuredMaxOffsetPx,
+        roi.toleranceRadius * Math.min(frame.width, frame.height)
+      ),
+    }));
 
-    const step = 16;
-    const rTest = 16;
+    const references = Array.from(referenceProfiles.values()).map((profile) => profile.signature);
+    const minReferenceSimilarity = 0.60;
+    const minExtraConfidence = 0.62;
+    const dedupeDistance = Math.max(10, configuredMaxOffsetPx * 0.75);
+    const extra: ExtraDetectedObject[] = [];
 
-    for (let y = y0; y <= y1; y += step) {
-      for (let x = x0; x <= x1; x += step) {
-        let minDistToKnown = Infinity;
-        for (const known of knownScrewCenters) {
-          const d = Math.hypot(x - known.x, y - known.y);
-          if (d < minDistToKnown) minDistToKnown = d;
-        }
-
-        if (minDistToKnown > minScrewDistancePx) {
-          const check = this.detectScrewInRegion(frame, edges, x, y, 12, rTest);
-          if (check.isPresent && check.confidence >= 0.78 && check.center) {
-            const duplicate = extra.some((item) => {
-              const px = item.position.x * frame.width;
-              const py = item.position.y * frame.height;
-              return Math.hypot(px - check.center!.x, py - check.center!.y) < minScrewDistancePx;
-            });
-            if (!duplicate) {
-              extra.push({
-                id: `extra-screw-${extra.length + 1}`,
-                position: {
-                  x: check.center.x / frame.width,
-                  y: check.center.y / frame.height,
-                },
-                confidence: Math.round(check.confidence * 100) / 100,
-                distanceToNearestExpected: Math.round(minDistToKnown),
-              });
-            }
-          }
-        }
+    for (const circle of openCVCircles) {
+      if (
+        circle.center.x < x0 ||
+        circle.center.x > x1 ||
+        circle.center.y < y0 ||
+        circle.center.y > y1
+      ) {
+        continue;
       }
+
+      const matchingExpected = expectedCenters.some((expected) => {
+        const distance = Math.hypot(
+          circle.center.x - expected.center.x,
+          circle.center.y - expected.center.y
+        );
+        const radiusCompatible =
+          circle.radius >= expected.radius * 0.55 &&
+          circle.radius <= expected.radius * 1.65;
+        return radiusCompatible && distance <= expected.toleranceRadius;
+      });
+
+      // A candidate inside an expected ROI belongs to that ROI's normal
+      // classification path. Only candidates outside all expected zones can
+      // become an EXTRA_OBJECT_DETECTED defect.
+      if (matchingExpected) continue;
+
+      const radiusReference = expectedCenters
+        .map((expected) => expected.radius)
+        .reduce((best, radius) =>
+          Math.abs(radius - circle.radius) < Math.abs(best - circle.radius) ? radius : best
+        );
+
+      if (
+        circle.radius < radiusReference * 0.55 ||
+        circle.radius > radiusReference * 1.65
+      ) {
+        continue;
+      }
+
+      const candidateSignature = sampleSignature(
+        frame,
+        null,
+        circle.center.x,
+        circle.center.y,
+        Math.max(4, circle.radius),
+        edges
+      );
+
+      let bestSimilarity = 0;
+      for (const referenceSignature of references) {
+        bestSimilarity = Math.max(
+          bestSimilarity,
+          signatureSimilarity(referenceSignature, candidateSignature)
+        );
+      }
+
+      if (bestSimilarity < minReferenceSimilarity) continue;
+
+      const distanceToNearestExpected = Math.min(
+        ...expectedCenters.map((expected) =>
+          Math.hypot(
+            circle.center.x - expected.center.x,
+            circle.center.y - expected.center.y
+          )
+        )
+      );
+
+      const distanceFactor = Math.max(
+        0,
+        1 - distanceToNearestExpected / Math.max(frame.width, frame.height)
+      );
+      const radiusFactor = Math.max(
+        0,
+        1 -
+          Math.abs(circle.radius - radiusReference) /
+            Math.max(radiusReference, 1)
+      );
+      const confidence = Math.min(
+        0.99,
+        circle.confidence *
+          (0.55 + 0.25 * radiusFactor + 0.20 * bestSimilarity) *
+          (0.85 + 0.15 * (1 - distanceFactor))
+      );
+
+      if (confidence < minExtraConfidence) continue;
+
+      const duplicate = extra.some((item) => {
+        const px = item.position.x * frame.width;
+        const py = item.position.y * frame.height;
+        return Math.hypot(px - circle.center.x, py - circle.center.y) < dedupeDistance;
+      });
+      if (duplicate) continue;
+
+      extra.push({
+        id: `extra-screw-${extra.length + 1}`,
+        position: {
+          x: circle.center.x / frame.width,
+          y: circle.center.y / frame.height,
+        },
+        confidence: Math.round(confidence * 100) / 100,
+        distanceToNearestExpected: Math.round(distanceToNearestExpected),
+      });
     }
 
     return extra;
   }
+
 }
 
 export const roiInspector = new ROIInspector();
