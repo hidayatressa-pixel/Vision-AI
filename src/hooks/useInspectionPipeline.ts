@@ -110,6 +110,14 @@ export function useInspectionPipeline({
 
   // Reset state when master/revision changes
   const resetPipeline = useCallback(() => {
+    // SAFETY: once a physical part has received a judgement, changing the
+    // selected master/revision must never clear the removal latch or PLC
+    // interlock. The part must leave the jig before a new inspection cycle
+    // can be started.
+    if (presenceDetectorRef.current.isAwaitingRemoval()) {
+      return;
+    }
+
     presenceDetectorRef.current.resetPartState();
     setState('WAITING_FOR_PART');
     setStabilizationProgress(0);
