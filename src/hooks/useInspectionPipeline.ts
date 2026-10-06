@@ -306,7 +306,6 @@ export function useInspectionPipeline({
       const alignTime = Math.max(...samples.map((sample) => sample.alignmentMs));
       const roiTime = Math.max(...samples.map((sample) => sample.roiMs));
       const ruleTime = Math.max(...samples.map((sample) => sample.ruleMs));
-      const visionInspectionMs = Math.round(performance.now() - cycleStart);
       const validationElapsedMs = Math.round(performance.now() - validationStartedAt);
 
       setLatestAlignment(alignment);
