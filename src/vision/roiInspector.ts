@@ -483,7 +483,14 @@ export class ROIInspector {
         // A permissive similarity threshold makes circular holes, reflections,
         // and washers dangerous false positives. Keep the reference tolerant,
         // but require enough structural agreement before declaring PRESENT.
-        if (visualSimilarity >= 0.60 && confidence >= 0.62) {
+        const centerTextureDelta = Math.abs(
+          candidateSignature.centerTexture - referenceSignature.centerTexture
+        );
+        if (
+          visualSimilarity >= 0.60 &&
+          centerTextureDelta <= 0.35 &&
+          confidence >= 0.62
+        ) {
           return { isPresent: true, center: cvCandidate.center, confidence, evidence: 'PRESENT' };
         }
       } else if (geometryConfidence >= 0.55) {
@@ -576,8 +583,22 @@ export class ROIInspector {
       // the golden reference. The threshold is intentionally tolerant of
       // lighting, paint fade, and minor deformation, but must reject weak
       // look-alikes such as holes and reflections.
-      isPresent = visualSimilarity >= 0.60;
-      confidence = Math.min(0.99, confidence * (0.45 + visualSimilarity * 0.55));
+      const centerTextureDelta = Math.abs(
+        sampleSignature(
+          frame,
+          colorFrame,
+          bestCenter.x,
+          bestCenter.y,
+          testR,
+          edges
+        ).centerTexture - referenceSignature.centerTexture
+      );
+      isPresent =
+        visualSimilarity >= 0.60 && centerTextureDelta <= 0.35;
+      confidence = Math.min(
+        0.99,
+        confidence * (0.45 + visualSimilarity * 0.55)
+      );
     }
 
     // Evidence must distinguish "good-quality view with no screw" from
