@@ -408,7 +408,9 @@ class PLCService {
         'PROCESS_BLOCKED',
         'INTERLOCK',
         payload.judgement !== 'OK'
-          ? `Process blocked: Product NG (${payload.failureReason || 'Defect detected'})`
+          ? payload.judgement === 'NG'
+            ? `Process blocked: Product NG (${payload.failureReason || 'Defect detected'})`
+            : `Process blocked: ${payload.judgement} — ${payload.failureReason || 'Inspection did not produce a valid product judgement'}`
           : 'Process blocked: Machine not ready'
       );
     }
