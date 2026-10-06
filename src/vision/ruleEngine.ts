@@ -59,7 +59,7 @@ export class RuleEngine {
 
     for (const roi of roiResults) {
       if (!roi.isPresent) {
-        if (roi.status === 'FAIL') {
+        if (roi.status === 'FAIL' && roi.evidence !== 'UNCERTAIN') {
           defects.push({
             code: 'MISSING_PART',
             roiId: roi.roiId,
@@ -124,7 +124,7 @@ export class RuleEngine {
     // Ambiguous required-ROI evidence is not proof of a product defect.
     const hasUncertainRequiredRoi = roiResults.some(
       (roi) =>
-        roi.status === 'WARNING' &&
+        roi.evidence === 'UNCERTAIN' &&
         !roi.isPresent &&
         revision.inspectionROIs.find((configured) => configured.id === roi.roiId)?.isRequired
     );
