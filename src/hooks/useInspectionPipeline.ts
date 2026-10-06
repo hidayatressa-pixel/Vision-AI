@@ -374,10 +374,7 @@ export function useInspectionPipeline({
       // This result remains locked until the presence detector confirms that
       // the physical part has been removed from the jig. There is no timeout,
       // operator reset, or reposition-based reinspection path.
-      presenceDetectorRef.current.markPartInspected(
-        gray,
-        revision.detectionZone
-      );
+      presenceDetectorRef.current.markPartInspected();
       isProcessingRef.current = false;
     } catch (error) {
       const message =
