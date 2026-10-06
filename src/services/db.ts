@@ -48,6 +48,7 @@ class DatabaseService {
   // Master configuration is intentionally kept station-local until the
   // approved source-controlled master asset package is bundled.
   private masterCache = new Map<string, MasterProduct>();
+  private readonly localHistoryKey = 'vision-ai-inspection-history';
 
   public async getAllMasters(): Promise<MasterProduct[]> {
     return Array.from(this.masterCache.values());
@@ -66,6 +67,41 @@ class DatabaseService {
   }
 
   // --- Cloud Inspection History ---
+  private getLocalHistory(): InspectionRecord[] {
+    try {
+      const raw = localStorage.getItem(this.localHistoryKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private saveLocalHistory(record: InspectionRecord): void {
+    try {
+      const existing = this.getLocalHistory().filter((item) => item.id !== record.id);
+      localStorage.setItem(this.localHistoryKey, JSON.stringify([record, ...existing].slice(0, 5000)));
+    } catch (error) {
+      console.warn('[DatabaseService] Local history save failed:', error);
+    }
+  }
+
+  private removeLocalHistoryRecord(id: string): void {
+    try {
+      localStorage.setItem(this.localHistoryKey, JSON.stringify(this.getLocalHistory().filter((item) => item.id !== id)));
+    } catch {}
+  }
+
+  private removeAllLocalHistory(): void {
+    try { localStorage.removeItem(this.localHistoryKey); } catch {}
+  }
+
+  private mergeHistory(cloud: InspectionRecord[], local: InspectionRecord[]): InspectionRecord[] {
+    const merged = new Map<string, InspectionRecord>();
+    [...local, ...cloud].forEach((record) => merged.set(record.id, record));
+    return Array.from(merged.values()).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }
 
   private toCloudRecord(record: InspectionRecord) {
     return {
@@ -127,25 +163,32 @@ class DatabaseService {
   }
 
   public async saveInspectionRecord(record: InspectionRecord): Promise<void> {
-    await this.request('', {
-      method: 'POST',
-      headers: {
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      },
-      body: JSON.stringify(this.toCloudRecord(record)),
-    });
+    try {
+      await this.request('', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(this.toCloudRecord(record)),
+      });
+      this.removeLocalHistoryRecord(record.id);
+    } catch (error) {
+      this.saveLocalHistory({ ...record, syncedToCloud: false });
+      console.warn('[DatabaseService] Cloud history unavailable; saved locally:', error);
+    }
   }
 
   public async getRecentInspections(limit = 500): Promise<InspectionRecord[]> {
-    // Cloud history is optional for local camera/vision development. If
-    // Supabase is not configured, return an empty history instead of allowing
-    // the dashboard/statistics layer to crash the whole application.
+    const local = this.getLocalHistory();
     if (!SUPABASE_URL || !SUPABASE_KEY) {
-      return [];
+      return local.slice(0, Math.max(1, Math.min(limit, 5000)));
     }
 
-    const rows = await this.request<any[]>(`?select=*&order=timestamp.desc&limit=${Math.max(1, Math.min(limit, 5000))}`);
-    return rows.map((row) => this.fromCloudRecord(row));
+    try {
+      const rows = await this.request<any[]>(`?select=*&order=timestamp.desc&limit=${Math.max(1, Math.min(limit, 5000))}`);
+      return this.mergeHistory(rows.map((row) => this.fromCloudRecord(row)), local).slice(0, Math.max(1, Math.min(limit, 5000)));
+    } catch (error) {
+      console.warn('[DatabaseService] Cloud history read failed; using local history:', error);
+      return local.slice(0, Math.max(1, Math.min(limit, 5000)));
+    }
   }
 
   public async getFilteredInspections(filters: {
@@ -175,12 +218,14 @@ class DatabaseService {
     const records = await this.getRecentInspections(5000);
     let totalOk = 0;
     let totalNg = 0;
+    let totalInvalid = 0;
     let totalErrors = 0;
     let totalCycleSum = 0;
 
     for (const record of records) {
       if (record.judgement === 'OK') totalOk++;
       else if (record.judgement === 'NG') totalNg++;
+      else if (record.judgement === 'INVALID') totalInvalid++;
       else totalErrors++;
       totalCycleSum += record.metrics?.totalCycleMs || 0;
     }
@@ -190,6 +235,7 @@ class DatabaseService {
       totalInspected,
       totalOk,
       totalNg,
+      totalInvalid,
       totalErrors,
       yieldRate: totalInspected > 0 ? (totalOk / totalInspected) * 100 : 100,
       lastCycleTimeMs: records[0]?.metrics?.totalCycleMs || 0,
@@ -198,8 +244,8 @@ class DatabaseService {
   }
 
   public async clearInspectionHistory(): Promise<void> {
-    // Explicit non-null filter keeps this operation compatible with PostgREST
-    // and makes the destructive intent obvious.
+    this.removeAllLocalHistory();
+    if (!SUPABASE_URL || !SUPABASE_KEY) return;
     await this.request('?id=not.is.null', {
       method: 'DELETE',
       headers: { Prefer: 'return=minimal' },

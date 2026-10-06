@@ -142,7 +142,7 @@ export const InspectionHistoryView: React.FC<InspectionHistoryViewProps> = ({ on
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
         {/* Judgement filter tabs */}
         <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-mono">
-          {['ALL', 'OK', 'NG', 'ERROR'].map((tab) => (
+          {['ALL', 'OK', 'NG', 'INVALID', 'ERROR'].map((tab) => (
             <button
               key={tab}
               onClick={() => setFilterJudgement(tab)}
@@ -191,6 +191,7 @@ export const InspectionHistoryView: React.FC<InspectionHistoryViewProps> = ({ on
                 records.map((r) => {
                   const isOk = r.judgement === 'OK';
                   const isNg = r.judgement === 'NG';
+                  const isInvalid = r.judgement === 'INVALID';
 
                   return (
                     <tr
@@ -205,7 +206,9 @@ export const InspectionHistoryView: React.FC<InspectionHistoryViewProps> = ({ on
                               ? 'bg-emerald-950 text-emerald-300 border border-emerald-700/80'
                               : isNg
                               ? 'bg-red-950 text-red-300 border border-red-700/80'
-                              : 'bg-amber-950 text-amber-300 border border-amber-700/80'
+                              : isInvalid
+                              ? 'bg-amber-950 text-amber-300 border border-amber-700/80'
+                              : 'bg-slate-800 text-slate-300 border border-slate-700/80'
                           }`}
                         >
                           {isOk ? (
@@ -272,7 +275,11 @@ export const InspectionHistoryView: React.FC<InspectionHistoryViewProps> = ({ on
                   className={`px-3 py-1 rounded-lg font-bold font-mono text-sm ${
                     selectedRecord.judgement === 'OK'
                       ? 'bg-emerald-950 text-emerald-300 border border-emerald-500'
-                      : 'bg-red-950 text-red-300 border border-red-500'
+                      : selectedRecord.judgement === 'NG'
+                      ? 'bg-red-950 text-red-300 border border-red-500'
+                      : selectedRecord.judgement === 'INVALID'
+                      ? 'bg-amber-950 text-amber-300 border border-amber-500'
+                      : 'bg-slate-800 text-slate-200 border border-slate-500'
                   }`}
                 >
                   {selectedRecord.judgement}
@@ -300,7 +307,11 @@ export const InspectionHistoryView: React.FC<InspectionHistoryViewProps> = ({ on
                 className={`p-4 rounded-2xl border ${
                   selectedRecord.judgement === 'OK'
                     ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-                    : 'bg-red-950/40 border-red-500/40 text-red-200'
+                    : selectedRecord.judgement === 'NG'
+                    ? 'bg-red-950/40 border-red-500/40 text-red-200'
+                    : selectedRecord.judgement === 'INVALID'
+                    ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                    : 'bg-slate-800/40 border-slate-600/40 text-slate-200'
                 }`}
               >
                 <div className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-1">

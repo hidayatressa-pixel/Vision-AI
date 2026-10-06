@@ -8,6 +8,208 @@ import { InspectionROI, Position2D, ToleranceConfig } from '../types/master';
 import { alignmentEngine } from './alignmentEngine';
 import { GrayscaleImage, sobelEdges } from './imageUtils';
 import { detectOpenCVCircles, OpenCVCircle } from './opencvEngine';
+import { ReferenceImage } from '../types/master';
+
+interface VisualSignature {
+  brightness: number;
+  centerBrightness: number;
+  ringBrightness: number;
+  centerContrast: number;
+  edgeDensity: number;
+  circularity: number;
+  colorR: number;
+  colorG: number;
+  colorB: number;
+  saturation: number;
+}
+
+interface VisualReferenceProfile {
+  roiId: string;
+  signature: VisualSignature;
+}
+
+const referenceProfileCache = new Map<string, Promise<VisualReferenceProfile | null>>();
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function signatureSimilarity(a: VisualSignature, b: VisualSignature): number {
+  const weights = {
+    centerContrast: 0.20,
+    edgeDensity: 0.20,
+    circularity: 0.18,
+    brightness: 0.10,
+    centerBrightness: 0.08,
+    ringBrightness: 0.08,
+    colorR: 0.04,
+    colorG: 0.04,
+    colorB: 0.04,
+    saturation: 0.04,
+  };
+
+  const distance =
+    Math.abs(a.centerContrast - b.centerContrast) * weights.centerContrast +
+    Math.abs(a.edgeDensity - b.edgeDensity) * weights.edgeDensity +
+    Math.abs(a.circularity - b.circularity) * weights.circularity +
+    Math.abs(a.brightness - b.brightness) * weights.brightness +
+    Math.abs(a.centerBrightness - b.centerBrightness) * weights.centerBrightness +
+    Math.abs(a.ringBrightness - b.ringBrightness) * weights.ringBrightness +
+    Math.abs(a.colorR - b.colorR) * weights.colorR +
+    Math.abs(a.colorG - b.colorG) * weights.colorG +
+    Math.abs(a.colorB - b.colorB) * weights.colorB +
+    Math.abs(a.saturation - b.saturation) * weights.saturation;
+
+  return clamp01(1 - distance);
+}
+
+function sampleSignature(
+  gray: ImageData | GrayscaleImage,
+  color: ImageData | null,
+  cx: number,
+  cy: number,
+  radius: number,
+  edgeImage?: GrayscaleImage
+): VisualSignature {
+  const width = gray.width;
+  const height = gray.height;
+  const grayData = 'data' in gray ? gray.data : new Uint8Array();
+  const isImageData = gray instanceof ImageData;
+
+  const readGray = (x: number, y: number) => {
+    const ix = Math.max(0, Math.min(width - 1, Math.round(x)));
+    const iy = Math.max(0, Math.min(height - 1, Math.round(y)));
+    if (isImageData) {
+      const i = (iy * width + ix) * 4;
+      return (gray as ImageData).data[i] * 0.299 + (gray as ImageData).data[i + 1] * 0.587 + (gray as ImageData).data[i + 2] * 0.114;
+    }
+    return grayData[iy * width + ix] || 0;
+  };
+
+  const readColor = (x: number, y: number) => {
+    if (!color) return { r: 128, g: 128, b: 128 };
+    const ix = Math.max(0, Math.min(color.width - 1, Math.round(x)));
+    const iy = Math.max(0, Math.min(color.height - 1, Math.round(y)));
+    const i = (iy * color.width + ix) * 4;
+    return { r: color.data[i], g: color.data[i + 1], b: color.data[i + 2] };
+  };
+
+  const samples: Array<{ value: number; edge: number; ring: boolean; color: { r: number; g: number; b: number } }> = [];
+  const angular = 24;
+  const radial = 5;
+
+  let centerSum = 0;
+  let centerCount = 0;
+  let edgeSum = 0;
+  let edgeCount = 0;
+  let circularVariance = 0;
+  const ringValues: number[] = [];
+  const allValues: number[] = [];
+  let colorR = 0;
+  let colorG = 0;
+  let colorB = 0;
+  let saturation = 0;
+  let colorCount = 0;
+
+  for (let rIndex = 0; rIndex < radial; rIndex++) {
+    const radialFactor = 0.18 + (rIndex / (radial - 1)) * 1.02;
+    const rr = Math.max(2, radius * radialFactor);
+    for (let a = 0; a < angular; a++) {
+      const angle = (a * Math.PI * 2) / angular;
+      const x = cx + Math.cos(angle) * rr;
+      const y = cy + Math.sin(angle) * rr;
+      const value = readGray(x, y);
+      const c = readColor(x, y);
+      const edge = edgeImage
+        ? edgeImage.data[Math.max(0, Math.min(edgeImage.height - 1, Math.round(y))) * edgeImage.width + Math.max(0, Math.min(edgeImage.width - 1, Math.round(x)))] / 255
+        : 0;
+      const ring = radialFactor >= 0.70 && radialFactor <= 1.20;
+      samples.push({ value, edge, ring, color: c });
+      allValues.push(value);
+      if (ring) ringValues.push(value);
+      if (radialFactor <= 0.45) {
+        centerSum += value;
+        centerCount++;
+      }
+      edgeSum += edge;
+      edgeCount++;
+      colorR += c.r / 255;
+      colorG += c.g / 255;
+      colorB += c.b / 255;
+      const maxC = Math.max(c.r, c.g, c.b) / 255;
+      const minC = Math.min(c.r, c.g, c.b) / 255;
+      saturation += maxC > 0 ? (maxC - minC) / maxC : 0;
+      colorCount++;
+    }
+  }
+
+  const centerBrightness = centerCount ? centerSum / centerCount / 255 : 0;
+  const ringBrightness = ringValues.length ? ringValues.reduce((s, v) => s + v, 0) / ringValues.length / 255 : centerBrightness;
+  const brightness = allValues.length ? allValues.reduce((s, v) => s + v, 0) / allValues.length / 255 : 0;
+  const centerContrast = clamp01(Math.abs(ringBrightness - centerBrightness) * 2.2);
+  const edgeDensity = edgeCount ? edgeSum / edgeCount : 0;
+
+  // Circularity is based on how consistently the ring differs from the center.
+  // It is deliberately tolerant of missing/soft pixels so a slightly damaged
+  // or faded screw can still match its reference.
+  for (let a = 0; a < angular; a++) {
+    const angle = (a * Math.PI * 2) / angular;
+    const rr = Math.max(2, radius * 0.92);
+    const outer = readGray(cx + Math.cos(angle) * rr, cy + Math.sin(angle) * rr) / 255;
+    const inner = readGray(cx + Math.cos(angle) * radius * 0.35, cy + Math.sin(angle) * radius * 0.35) / 255;
+    const delta = Math.abs(outer - inner);
+    circularVariance += delta;
+  }
+  const circularity = clamp01((circularVariance / angular) * 2.0);
+
+  return {
+    brightness,
+    centerBrightness,
+    ringBrightness,
+    centerContrast,
+    edgeDensity,
+    circularity,
+    colorR: colorCount ? colorR / colorCount : 0.5,
+    colorG: colorCount ? colorG / colorCount : 0.5,
+    colorB: colorCount ? colorB / colorCount : 0.5,
+    saturation: colorCount ? saturation / colorCount : 0,
+  };
+}
+
+async function loadVisualReference(reference: ReferenceImage): Promise<VisualReferenceProfile | null> {
+  if (!reference.imageUrl) return null;
+  const cacheKey = reference.id + ':' + reference.imageUrl.length;
+  const cached = referenceProfileCache.get(cacheKey);
+  if (cached) return cached;
+
+  const promise = new Promise<VisualReferenceProfile | null>((resolve) => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const size = 128;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, 0, size, size);
+        const imageData = ctx.getImageData(0, 0, size, size);
+        resolve({
+          roiId: reference.roiId || reference.id,
+          signature: sampleSignature(imageData, imageData, size / 2, size / 2, size * 0.30),
+        });
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = reference.imageUrl;
+  });
+
+  referenceProfileCache.set(cacheKey, promise);
+  return promise;
+}
 
 export class ROIInspector {
   /**
@@ -19,7 +221,9 @@ export class ROIInspector {
     alignment: AlignmentResult,
     tolerance: ToleranceConfig,
     masterWidth: number,
-    masterHeight: number
+    masterHeight: number,
+    referenceImages: ReferenceImage[] = [],
+    colorFrame: ImageData | null = null
   ): Promise<{
     roiResults: ROIInspectionResult[];
     extraObjects: ExtraDetectedObject[];
@@ -49,6 +253,12 @@ export class ROIInspector {
     const framePxPerMasterPx = frameMinDimension / masterMinDimension;
     const configuredMaxOffsetPx = Math.max(1, tolerance.maxPositionOffsetPx * framePxPerMasterPx);
     const pxPerMm = Math.max(0.001, configuredMaxOffsetPx / Math.max(0.001, tolerance.maxPositionOffsetMm));
+
+    const referenceProfiles = new Map<string, VisualReferenceProfile>();
+    await Promise.all(referenceImages.map(async (reference) => {
+      const profile = await loadVisualReference(reference);
+      if (profile) referenceProfiles.set(profile.roiId, profile);
+    }));
 
     const detectedScrewPositions: Position2D[] = [];
 
@@ -84,12 +294,20 @@ export class ROIInspector {
         transformedPx.y,
         searchRadius,
         expectedRadiusPx,
-        openCVCircles
+        openCVCircles,
+        referenceProfiles.get(roi.id)?.signature || null,
+        colorFrame
       );
 
       // 3. Evaluate tolerance and confidence
       const minConfidence = roi.minConfidence || tolerance.minScrewConfidence || 0.65;
       const isPresent = detection.isPresent && detection.confidence >= minConfidence;
+      const uncertaintyFloor = Math.max(0.25, minConfidence * 0.55);
+      const evidence: ROIInspectionResult['evidence'] = isPresent
+        ? 'PRESENT'
+        : detection.confidence >= uncertaintyFloor
+          ? 'UNCERTAIN'
+          : 'ABSENT';
 
       let positionOffsetPx = 0;
       let positionOffsetMm = 0;
@@ -117,7 +335,7 @@ export class ROIInspector {
 
       let status: 'PASS' | 'FAIL' | 'WARNING' = 'PASS';
       if (!isPresent) {
-        status = roi.isRequired ? 'FAIL' : 'WARNING';
+        status = evidence === 'UNCERTAIN' ? 'WARNING' : roi.isRequired ? 'FAIL' : 'WARNING';
       } else if (!isWithinTolerance) {
         status = 'FAIL';
       }
@@ -142,6 +360,7 @@ export class ROIInspector {
         isWithinTolerance,
         confidence: Math.round(detection.confidence * 100) / 100,
         isPresent,
+        evidence,
         status,
         failureReason,
       });
@@ -173,7 +392,9 @@ export class ROIInspector {
     expY: number,
     searchRadius: number,
     expectedRadius: number,
-    openCVCircles: OpenCVCircle[] = []
+    openCVCircles: OpenCVCircle[] = [],
+    referenceSignature: VisualSignature | null = null,
+    colorFrame: ImageData | null = null
   ): { isPresent: boolean; center: Position2D | null; confidence: number } {
     const x0 = Math.max(expectedRadius, Math.floor(expX - searchRadius));
     const y0 = Math.max(expectedRadius, Math.floor(expY - searchRadius));
@@ -201,9 +422,29 @@ export class ROIInspector {
         0,
         1 - Math.abs(cvCandidate.radius - expectedRadius) / Math.max(expectedRadius, 1)
       );
-      const confidence = Math.min(0.99, cvCandidate.confidence * (0.70 + 0.30 * radiusFactor) * (0.70 + 0.30 * distanceFactor));
-      if (confidence >= 0.55) {
-        return { isPresent: true, center: cvCandidate.center, confidence };
+      const geometryConfidence = Math.min(
+        0.99,
+        cvCandidate.confidence * (0.70 + 0.30 * radiusFactor) * (0.70 + 0.30 * distanceFactor)
+      );
+
+      if (referenceSignature) {
+        const candidateSignature = sampleSignature(
+          frame,
+          colorFrame,
+          cvCandidate.center.x,
+          cvCandidate.center.y,
+          Math.max(4, cvCandidate.radius),
+          edges
+        );
+        const visualSimilarity = signatureSimilarity(referenceSignature, candidateSignature);
+        // A reference image is evidence, not a pixel template. The candidate
+        // survives only when its visual characteristics are reasonably similar.
+        const confidence = Math.min(0.99, geometryConfidence * 0.45 + visualSimilarity * 0.55);
+        if (visualSimilarity >= 0.48 && confidence >= 0.55) {
+          return { isPresent: true, center: cvCandidate.center, confidence };
+        }
+      } else if (geometryConfidence >= 0.55) {
+        return { isPresent: true, center: cvCandidate.center, confidence: geometryConfidence };
       }
     }
 
@@ -244,8 +485,24 @@ export class ROIInspector {
         const dist = Math.hypot(cx - expX, cy - expY);
         const distFactor = Math.max(0.4, 1.0 - (dist / (searchRadius * 1.5)));
 
-        const score = avgEdge * 0.7 + contrast * 0.5;
-        const totalScore = score * distFactor;
+        const geometryScore = avgEdge * 0.7 + contrast * 0.5;
+        let totalScore = geometryScore * distFactor;
+
+        if (referenceSignature) {
+          const candidateSignature = sampleSignature(
+            frame,
+            colorFrame,
+            cx,
+            cy,
+            testR,
+            edges
+          );
+          const visualSimilarity = signatureSimilarity(referenceSignature, candidateSignature);
+          // Visual evidence carries slightly more weight than raw circularity.
+          // This is what prevents a nearby hole/reflection from being accepted
+          // merely because it happens to look circular.
+          totalScore *= 0.45 + visualSimilarity * 0.90;
+        }
 
         if (totalScore > bestScore) {
           bestScore = totalScore;
@@ -261,7 +518,19 @@ export class ROIInspector {
       confidence = Math.min(0.99, Math.max(0.2, (bestScore - 20) / 90));
     }
 
-    const isPresent = confidence >= 0.55 && bestCenter !== null;
+    let isPresent = confidence >= 0.55 && bestCenter !== null;
+
+    if (isPresent && referenceSignature && bestCenter) {
+      const visualSimilarity = signatureSimilarity(
+        referenceSignature,
+        sampleSignature(frame, colorFrame, bestCenter.x, bestCenter.y, testR, edges)
+      );
+      // Do not call a circle a screw when its visual signature is too far from
+      // the golden reference. The threshold is intentionally tolerant of
+      // lighting, paint fade, and minor deformation.
+      isPresent = visualSimilarity >= 0.48;
+      confidence = Math.min(0.99, confidence * (0.45 + visualSimilarity * 0.55));
+    }
 
     return {
       isPresent,

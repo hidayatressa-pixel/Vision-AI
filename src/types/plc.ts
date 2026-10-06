@@ -107,7 +107,7 @@ export interface PLCHandshakeState {
   interlockState: InterlockState;
   lastInspectionId: string | null;
   lastSequenceNumber: number;
-  lastResultSent: 'OK' | 'NG' | 'ERROR' | null;
+  lastResultSent: 'OK' | 'NG' | 'INVALID' | 'ERROR' | null;
   ackReceived: boolean;
   ackPending: boolean;
   roundTripLatencyMs: number;
@@ -122,7 +122,7 @@ export interface PLCInspectionPayload {
   timestamp: string;
   productCode: string;
   revisionCode: string;
-  judgement: 'OK' | 'NG' | 'ERROR';
+  judgement: 'OK' | 'NG' | 'INVALID' | 'ERROR';
   isProductNg: boolean;
   isSystemError: boolean;
   failureReason?: string;

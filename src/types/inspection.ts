@@ -15,12 +15,13 @@ export type InspectionMachineState =
   | 'INSPECTING'
   | 'JUDGEMENT_OK'
   | 'JUDGEMENT_NG'
+  | 'INSPECTION_INVALID'
   | 'ALIGNMENT_ERROR'
   | 'INSPECTION_ERROR'
   | 'SYSTEM_ERROR'
   | 'WAITING_PART_REMOVAL';
 
-export type JudgementResult = 'OK' | 'NG' | 'ERROR';
+export type JudgementResult = 'OK' | 'NG' | 'INVALID' | 'ERROR';
 
 export type DefectCode =
   | 'MISSING_PART'
@@ -71,6 +72,8 @@ export interface ROIInspectionResult {
   isWithinTolerance: boolean;
   confidence: number;
   isPresent: boolean;
+  /** Evidence classification prevents low-confidence absence from becoming automatic NG. */
+  evidence: 'PRESENT' | 'ABSENT' | 'UNCERTAIN';
   status: 'PASS' | 'FAIL' | 'WARNING';
   failureReason?: string;
 }
@@ -136,6 +139,7 @@ export interface InspectionStats {
   totalInspected: number;
   totalOk: number;
   totalNg: number;
+  totalInvalid: number;
   totalErrors: number;
   yieldRate: number; // 0 - 100%
   lastCycleTimeMs: number;

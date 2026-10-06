@@ -33,7 +33,10 @@ export class RuleEngine {
   ): RuleEvaluationResult {
     const defects: DefectItem[] = [];
 
-    // 1. Check Alignment (Distinguish System/Alignment Error from Product NG)
+    // 1. Alignment is a prerequisite for a valid product judgement.
+    // Failure to locate the reference does NOT prove the product is defective.
+    // It is an INVALID inspection result; infrastructure/runtime failures are
+    // handled separately by the pipeline/PLC watchdog.
     if (!alignment.success) {
       defects.push({
         code: 'ALIGNMENT_FAILED',
@@ -43,8 +46,8 @@ export class RuleEngine {
       });
 
       return {
-        judgement: 'ERROR',
-        primaryReason: alignment.errorMessage || 'Alignment Failed: Reference fiducials not found',
+        judgement: 'INVALID',
+        primaryReason: alignment.errorMessage || 'Inspection Invalid: reference fiducials could not be confirmed',
         defects,
         expectedCount: revision.expectedObjectCount,
         detectedCount: 0,
@@ -56,7 +59,7 @@ export class RuleEngine {
 
     for (const roi of roiResults) {
       if (!roi.isPresent) {
-        if (roi.status === 'FAIL') {
+        if (roi.status === 'FAIL' && roi.evidence !== 'UNCERTAIN') {
           defects.push({
             code: 'MISSING_PART',
             roiId: roi.roiId,
@@ -118,6 +121,24 @@ export class RuleEngine {
     }
 
     // 5. Final Judgement
+    // Ambiguous required-ROI evidence is not proof of a product defect.
+    const hasUncertainRequiredRoi = roiResults.some(
+      (roi) =>
+        roi.evidence === 'UNCERTAIN' &&
+        !roi.isPresent &&
+        revision.inspectionROIs.find((configured) => configured.id === roi.roiId)?.isRequired
+    );
+
+    if (hasUncertainRequiredRoi) {
+      return {
+        judgement: 'INVALID',
+        primaryReason: 'Inspection Invalid: vision evidence was insufficient to confirm one or more required ROIs',
+        defects,
+        expectedCount,
+        detectedCount: presentScrewCount,
+      };
+    }
+
     if (defects.length === 0) {
       return {
         judgement: 'OK',
