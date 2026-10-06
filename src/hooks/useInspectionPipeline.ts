@@ -114,7 +114,7 @@ export function useInspectionPipeline({
     // selected master/revision must never clear the removal latch or PLC
     // interlock. The part must leave the jig before a new inspection cycle
     // can be started.
-    if (presenceDetectorRef.current.isAwaitingRemoval()) {
+    if (isProcessingRef.current || presenceDetectorRef.current.isAwaitingRemoval()) {
       return;
     }
 
