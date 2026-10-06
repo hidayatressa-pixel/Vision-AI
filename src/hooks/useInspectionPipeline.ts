@@ -258,13 +258,38 @@ export function useInspectionPipeline({
         samples.push(sample);
 
         const lastTwo = samples.slice(-2);
-        if (
-          lastTwo.length === 2 &&
-          lastTwo[0].evaluation.judgement === lastTwo[1].evaluation.judgement &&
-          lastTwo[0].evaluation.judgement !== 'ERROR' &&
-          lastTwo[0].evaluation.judgement !== 'INVALID'
-        ) {
-          break;
+        if (lastTwo.length === 2) {
+          const [previous, current] = lastTwo;
+
+          // Early-finalization must obey the same evidence rules as the
+          // deadline consensus. Repeated labels alone are never enough for NG.
+          const concreteNgCodes = new Set([
+            'MISSING_PART',
+            'POSITION_OUT_OF_TOLERANCE',
+            'EXTRA_OBJECT_DETECTED',
+            'INCORRECT_COUNT',
+          ]);
+
+          const ngFingerprint = (sample: VisionSample) =>
+            sample.evaluation.defects
+              .filter((defect) => concreteNgCodes.has(defect.code))
+              .map((defect) => defect.code + ':' + (defect.roiId || 'GLOBAL'))
+              .sort()
+              .join('|');
+
+          const sameStrongNg =
+            previous.evaluation.judgement === 'NG' &&
+            current.evaluation.judgement === 'NG' &&
+            ngFingerprint(previous).length > 0 &&
+            ngFingerprint(previous) === ngFingerprint(current);
+
+          const sameStrongOk =
+            previous.evaluation.judgement === 'OK' &&
+            current.evaluation.judgement === 'OK';
+
+          if (sameStrongOk || sameStrongNg) {
+            break;
+          }
         }
 
         if (samples.length >= maxValidationFrames) break;
