@@ -527,16 +527,38 @@ export class ROIInspector {
       confidence = Math.min(0.99, confidence * (0.45 + visualSimilarity * 0.55));
     }
 
-    // Evidence bands deliberately separate "not detected" from "not enough
-    // evidence". A weak candidate must never silently become product NG.
-    // Only an extremely weak signal is treated as ABSENT; the middle band is
-    // explicitly UNCERTAIN and is handled by RuleEngine as INVALID.
+    // Evidence must distinguish "good-quality view with no screw" from
+    // "camera evidence is too weak to know". Low candidate confidence alone
+    // is NOT proof of absence because blur, glare, darkness, or occlusion can
+    // suppress the detector.
+    //
+    // Build a lightweight ROI image-quality signal from edge activity and
+    // local intensity variation. If the ROI itself is visually unreliable,
+    // the result is UNCERTAIN and RuleEngine will contain it as INVALID.
+    let qualityEdge = 0;
+    let qualityVariance = 0;
+    let qualitySamples = 0;
+    const qualityStep = Math.max(2, Math.round(testR / 4));
+    for (let qy = Math.max(0, Math.floor(expY - searchRadius)); qy <= Math.min(frame.height - 1, Math.ceil(expY + searchRadius)); qy += qualityStep) {
+      for (let qx = Math.max(0, Math.floor(expX - searchRadius)); qx <= Math.min(frame.width - 1, Math.ceil(expX + searchRadius)); qx += qualityStep) {
+        const idx = qy * frame.width + qx;
+        qualityEdge += edges.data[idx] / 255;
+        qualityVariance += Math.abs(frame.data[idx] - frame.data[Math.max(0, Math.min(frame.data.length - 1, idx + Math.min(frame.width, qualityStep)))]) / 255;
+        qualitySamples++;
+      }
+    }
+    const sceneQuality = qualitySamples
+      ? clamp01((qualityEdge / qualitySamples) * 1.4 + (qualityVariance / qualitySamples) * 0.8)
+      : 0;
+
     const uncertaintyFloor = 0.35;
     const evidence = isPresent
       ? 'PRESENT'
-      : confidence >= uncertaintyFloor
+      : sceneQuality < 0.22
         ? 'UNCERTAIN'
-        : 'ABSENT';
+        : confidence >= uncertaintyFloor
+          ? 'UNCERTAIN'
+          : 'ABSENT';
 
     return {
       isPresent,
