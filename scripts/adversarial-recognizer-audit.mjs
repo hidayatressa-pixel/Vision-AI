@@ -53,7 +53,8 @@ const threshold = 0.60;
 let failures = 0;
 for (const [name, expected, candidate] of cases) {
   const score = similarity(reference, candidate);
-  const accepted = score >= threshold;
+  const centerTextureDelta = Math.abs(candidate.centerTexture - reference.centerTexture);
+  const accepted = score >= threshold && centerTextureDelta <= 0.35;
   const pass = expected === 'PRESENT' ? accepted : !accepted;
   console.log(name.padEnd(18), score.toFixed(3), pass ? 'PASS' : 'FAIL');
   if (!pass) failures++;
