@@ -286,25 +286,68 @@ export function useInspectionPipeline({
         throw new Error('No vision validation sample was produced');
       }
 
-      // Consensus never converts uncertainty into Product NG.
-      // OK/NG are product judgements; INVALID means vision could not prove
-      // either outcome. Genuine runtime/PLC faults remain ERROR.
+      // Conservative consensus: a product NG must be proven by repeated,
+      // concrete defect evidence. Repeated labels alone are not evidence.
+      // Mixed OK/NG or differing defect evidence is INVALID, never OK.
       const okSamples = samples.filter((sample) => sample.evaluation.judgement === 'OK');
       const ngSamples = samples.filter((sample) => sample.evaluation.judgement === 'NG');
       const invalidSamples = samples.filter((sample) => sample.evaluation.judgement === 'INVALID');
       const errorSamples = samples.filter((sample) => sample.evaluation.judgement === 'ERROR');
 
-      let selected = samples[samples.length - 1];
-      if (okSamples.length > ngSamples.length && okSamples.length > invalidSamples.length && okSamples.length > errorSamples.length) {
-        selected = okSamples[okSamples.length - 1];
-      } else if (ngSamples.length > okSamples.length && ngSamples.length > invalidSamples.length && ngSamples.length > errorSamples.length) {
-        selected = ngSamples[ngSamples.length - 1];
-      } else if (invalidSamples.length > 0) {
-        selected = invalidSamples[invalidSamples.length - 1];
-      } else if (errorSamples.length > 0) {
-        selected = errorSamples[errorSamples.length - 1];
-      }
+      const concreteNgCodes = new Set([
+        'MISSING_PART',
+        'POSITION_OUT_OF_TOLERANCE',
+        'EXTRA_OBJECT_DETECTED',
+        'INCORRECT_COUNT',
+      ]);
 
+      const ngFingerprint = (sample: VisionSample) =>
+        sample.evaluation.defects
+          .filter((defect) => concreteNgCodes.has(defect.code))
+          .map((defect) => defect.code + ':' + (defect.roiId || 'GLOBAL'))
+          .sort()
+          .join('|');
+
+      const strongNgSamples = ngSamples.filter((sample) => ngFingerprint(sample).length > 0);
+      const strongNgFingerprints = new Set(strongNgSamples.map(ngFingerprint));
+
+      let selected = samples[samples.length - 1];
+
+      if (errorSamples.length > 0) {
+        selected = errorSamples[errorSamples.length - 1];
+      } else if (strongNgSamples.length >= 2 && strongNgFingerprints.size === 1) {
+        // NG is allowed only when at least two frames independently prove the
+        // same concrete product defect. This prevents repeated weak vision
+        // failures from becoming a false product NG.
+        selected = strongNgSamples[strongNgSamples.length - 1];
+      } else if (okSamples.length === samples.length) {
+        // Every validation frame agrees that all required checks passed.
+        selected = okSamples[okSamples.length - 1];
+      } else {
+        // Any disagreement (OK vs NG, different NG defects, or uncertainty)
+        // means the vision system cannot prove a product judgement safely.
+        const invalidEvaluation = {
+          ...samples[samples.length - 1].evaluation,
+          judgement: 'INVALID' as const,
+          primaryReason:
+            invalidSamples.length > 0
+              ? 'Inspection Invalid: one or more validation frames contained insufficient vision evidence'
+              : 'Inspection Invalid: multi-frame evidence was inconsistent; product NG was not proven',
+          defects: [
+            ...samples[samples.length - 1].evaluation.defects,
+            {
+              code: 'LOW_CONFIDENCE' as const,
+              message: 'Multi-frame evidence was not consistent enough to prove OK or NG',
+              expected: 'Consistent validation evidence across inspection frames',
+              actual: samples.length + ' validation frame(s) with mixed or insufficient evidence',
+            },
+          ],
+        };
+        selected = {
+          ...samples[samples.length - 1],
+          evaluation: invalidEvaluation,
+        };
+      }
       const alignment = selected.alignment;
       const roiResults = selected.roiResults;
       const extraObjects = selected.extraObjects;
