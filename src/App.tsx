@@ -44,11 +44,12 @@ export default function App() {
   const [cameraSourceMode, setCameraSourceMode] = useState<CameraSourceMode>('LOCAL_CAMERA');
   const [remotePeerId, setRemotePeerId] = useState('');
   const [remoteStatus, setRemoteStatus] = useState<'idle' | 'starting' | 'waiting' | 'connected' | 'error'>('idle');
+  const [processingFps, setProcessingFps] = useState(5);
   const remoteSession = useMemo(() => createRemoteCameraSession(), []);
 
   const cameraOptions = React.useMemo(() => ({ preferredFacingMode: 'environment' as const, preferredResolution: { width: 800, height: 600 } }), []);
   const camera = useCamera({ ...cameraOptions, sourceMode: cameraSourceMode });
-  const pipeline = useInspectionPipeline({ activeMaster, activeRevision, captureFrame: camera.captureFrame, cameraState: camera.cameraState, fps: camera.fps });
+  const pipeline = useInspectionPipeline({ activeMaster, activeRevision, captureFrame: camera.captureFrame, cameraState: camera.cameraState, fps: camera.fps, processingFps });
 
   useEffect(() => {
     if (cameraSourceMode !== 'PHONE_REMOTE') {
@@ -145,7 +146,7 @@ export default function App() {
     <div className="min-h-screen rvi-app text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} role={role} setRole={() => undefined} activeMaster={activeMaster} activeRevision={activeRevision} isMuted={isMuted} toggleMute={toggleMute} pendingSyncCount={pendingSyncCount} onSync={handleSync} />
       <main className="rvi-main flex-1 max-w-[1500px] w-full mx-auto p-3 sm:p-5 lg:p-6">
-        {activeTab === 'INSPECTION' && <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} calibrateBackground={pipeline.calibrateBackground} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => setActiveTab('SETTINGS')} />}
+        {activeTab === 'INSPECTION' && <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} processingFps={processingFps} setProcessingFps={setProcessingFps} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} calibrateBackground={pipeline.calibrateBackground} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => setActiveTab('SETTINGS')} />}
         {activeTab === 'HISTORY' && <InspectionHistoryView onRefreshStats={loadMasters} />}
         {activeTab === 'SETTINGS' && <SettingsView onNavigate={setActiveTab} onClose={() => setActiveTab('INSPECTION')} />}
         {activeTab === 'MASTERS' && <MasterManager masters={masters} activeMaster={activeMaster} activeRevision={activeRevision} onSelectMaster={handleSelectMaster} onRefreshMasters={loadMasters} onOpenSetupModal={handleOpenSetupModal} onCreateNewMaster={handleCreateNewMaster} />}
