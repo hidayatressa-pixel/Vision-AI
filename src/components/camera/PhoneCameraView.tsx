@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, CheckCircle2, CircleAlert } from 'lucide-react';
+import { Camera, CheckCircle2, CircleAlert, ZoomIn, ZoomOut } from 'lucide-react';
 import { createRemoteCameraSession } from '../../services/remoteCamera';
 
 export const PhoneCameraView: React.FC = () => {
@@ -8,6 +8,24 @@ export const PhoneCameraView: React.FC = () => {
   const sessionRef = useRef(createRemoteCameraSession());
   const [status, setStatus] = useState<'starting' | 'connected' | 'error'>('starting');
   const [message, setMessage] = useState('Requesting camera access...');
+  const [zoom, setZoom] = useState(1);
+
+  const setCameraZoom = async (nextZoom: number) => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    const capabilities = track.getCapabilities() as MediaTrackCapabilities & { zoom?: { min: number; max: number; step?: number } };
+    if (!capabilities.zoom) return;
+    const min = capabilities.zoom.min;
+    const max = capabilities.zoom.max;
+    const step = capabilities.zoom.step || 0.1;
+    const value = Math.min(max, Math.max(min, Math.round(nextZoom / step) * step));
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: value }] });
+      setZoom(value);
+    } catch (error) {
+      console.warn('Camera zoom constraint rejected:', error);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +117,21 @@ export const PhoneCameraView: React.FC = () => {
       <main className="flex-1 p-4 flex flex-col gap-4">
         <div className="aspect-video bg-black rounded-2xl overflow-hidden border border-slate-800">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+        </div>
+
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">Camera Zoom</span>
+            <span className="text-sm font-mono text-cyan-300">{zoom.toFixed(1)}×</span>
+          </div>
+          <input aria-label="Camera zoom" type="range" min="1" max="4" step="0.1" value={zoom}
+            onChange={(event) => void setCameraZoom(Number(event.target.value))}
+            className="w-full accent-cyan-400" />
+          <div className="flex items-center justify-between mt-2">
+            <button onClick={() => void setCameraZoom(zoom - 0.2)} className="p-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700"><ZoomOut className="w-4 h-4" /></button>
+            <span className="text-[10px] text-slate-500 font-mono">Keep the inspection part dominant in frame</span>
+            <button onClick={() => void setCameraZoom(zoom + 0.2)} className="p-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700"><ZoomIn className="w-4 h-4" /></button>
+          </div>
         </div>
 
         <div className={`rounded-2xl border p-4 flex items-center gap-3 ${status === 'connected' ? 'border-emerald-500/40 bg-emerald-500/5' : status === 'error' ? 'border-red-500/40 bg-red-500/5' : 'border-cyan-500/30 bg-cyan-500/5'}`}>
