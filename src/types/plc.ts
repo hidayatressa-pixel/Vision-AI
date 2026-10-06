@@ -122,7 +122,7 @@ export interface PLCInspectionPayload {
   timestamp: string;
   productCode: string;
   revisionCode: string;
-  judgement: 'OK' | 'NG' | 'ERROR';
+  judgement: 'OK' | 'NG' | 'INVALID' | 'ERROR';
   isProductNg: boolean;
   isSystemError: boolean;
   failureReason?: string;
