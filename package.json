@@ -7,7 +7,8 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "audit:recognizer": "node scripts/adversarial-recognizer-audit.mjs"
   },
   "dependencies": {
     "@opencvjs/web": "5.0.0-release.2",
