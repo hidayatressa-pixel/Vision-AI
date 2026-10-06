@@ -34,6 +34,7 @@ export interface UseInspectionPipelineProps {
   captureFrame: () => ImageData | null;
   cameraState: string;
   fps: number;
+  processingFps: number;
 }
 
 export function useInspectionPipeline({
@@ -42,6 +43,7 @@ export function useInspectionPipeline({
   captureFrame,
   cameraState,
   fps,
+  processingFps,
 }: UseInspectionPipelineProps) {
   const [state, setState] = useState<InspectionMachineState>('WAITING_FOR_PART');
   const [stabilizationProgress, setStabilizationProgress] = useState<number>(0);
@@ -594,7 +596,7 @@ export function useInspectionPipeline({
       }
     }, [captureFrame, fps]);
 
-  // Main real-time pipeline tick loop (~20 FPS)
+  // Main real-time pipeline tick loop. Presence/inspection sampling follows the operator-configured processing FPS.
   useEffect(() => {
     if (cameraState === 'error' || cameraState === 'permission_denied') return;
     if (!activeRevision) return;
@@ -731,10 +733,10 @@ export function useInspectionPipeline({
       requestAnimationFrame(() => {
         executeInspection(frameData, partDetectDuration, stabDuration);
       });
-    }, 50); // 20 ticks per second
+    }, Math.max(50, Math.round(1000 / Math.max(1, processingFps)));
 
     return () => clearInterval(interval);
-  }, [activeRevision, cameraState, captureFrame, executeInspection, state]);
+  }, [activeRevision, cameraState, captureFrame, executeInspection, state, processingFps]);
 
   return {
     state,
