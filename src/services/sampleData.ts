@@ -173,7 +173,7 @@ export async function initSeedDataIfEmpty() {
             ? sourceRevision.anchors
             : SEED_PRODUCT_A.revisions[0].anchors,
         referenceImages:
-          sourceRevision.referenceImages?.length === 6
+          sourceRevision.referenceImages?.length === 8
             ? sourceRevision.referenceImages
             : SEED_PRODUCT_A.revisions[0].referenceImages,
       }],
