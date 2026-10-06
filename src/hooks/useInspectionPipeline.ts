@@ -56,6 +56,7 @@ export function useInspectionPipeline({
     totalInspected: 0,
     totalOk: 0,
     totalNg: 0,
+    totalInvalid: 0,
     totalErrors: 0,
     yieldRate: 100,
     lastCycleTimeMs: 0,
