@@ -15,6 +15,7 @@ import {
   InspectionMachineState,
   InspectionRecord,
   InspectionStats,
+  JudgementResult,
   ROIInspectionResult,
   SystemMetrics,
 } from '../types/inspection';
@@ -259,7 +260,8 @@ export function useInspectionPipeline({
         if (
           lastTwo.length === 2 &&
           lastTwo[0].evaluation.judgement === lastTwo[1].evaluation.judgement &&
-          lastTwo[0].evaluation.judgement !== 'ERROR'
+          lastTwo[0].evaluation.judgement !== 'ERROR' &&
+          lastTwo[0].evaluation.judgement !== 'INVALID'
         ) {
           break;
         }
@@ -283,20 +285,23 @@ export function useInspectionPipeline({
         throw new Error('No vision validation sample was produced');
       }
 
-      // Select the consensus result. At the deadline, OK requires a majority
-      // of valid OK samples. Everything else fails safe to NG. This keeps
-      // algorithmic uncertainty out of SYSTEM_ERROR while preventing a single
-      // optimistic frame from producing an OK result.
+      // Consensus never converts uncertainty into Product NG.
+      // OK/NG are product judgements; INVALID means vision could not prove
+      // either outcome. Genuine runtime/PLC faults remain ERROR.
       const okSamples = samples.filter((sample) => sample.evaluation.judgement === 'OK');
       const ngSamples = samples.filter((sample) => sample.evaluation.judgement === 'NG');
+      const invalidSamples = samples.filter((sample) => sample.evaluation.judgement === 'INVALID');
+      const errorSamples = samples.filter((sample) => sample.evaluation.judgement === 'ERROR');
 
       let selected = samples[samples.length - 1];
-      if (okSamples.length > ngSamples.length) {
+      if (okSamples.length > ngSamples.length && okSamples.length > invalidSamples.length && okSamples.length > errorSamples.length) {
         selected = okSamples[okSamples.length - 1];
-      } else if (ngSamples.length > okSamples.length) {
+      } else if (ngSamples.length > okSamples.length && ngSamples.length > invalidSamples.length && ngSamples.length > errorSamples.length) {
         selected = ngSamples[ngSamples.length - 1];
-      } else if (okSamples.length === ngSamples.length && ngSamples.length > 0) {
-        selected = ngSamples[ngSamples.length - 1];
+      } else if (invalidSamples.length > 0) {
+        selected = invalidSamples[invalidSamples.length - 1];
+      } else if (errorSamples.length > 0) {
+        selected = errorSamples[errorSamples.length - 1];
       }
 
       const alignment = selected.alignment;
@@ -354,10 +359,9 @@ export function useInspectionPipeline({
       // 5. Processing time is a deterministic budget, not a new product state.
       // A vision cycle that takes longer than the preferred budget must still
       // produce a product judgement; only infrastructure/runtime failures are ERROR.
-      let resultJudgement: 'OK' | 'NG' | 'ERROR' = evaluation.judgement;
+      let resultJudgement: JudgementResult = evaluation.judgement;
       let resultReason = evaluation.primaryReason;
       if (totalInspectionMs > plcService.getConfig().maxInspectionTimeoutMs) {
-        resultJudgement = 'NG';
         resultReason = `${evaluation.primaryReason} — inspection exceeded the preferred processing budget`;
         plcService.logTimelineEvent('INSPECTION_BUDGET_EXCEEDED', 'VISION', resultReason);
       }
@@ -448,8 +452,11 @@ export function useInspectionPipeline({
       } else if (resultJudgement === 'NG') {
         setState('JUDGEMENT_NG');
         soundService.playFailBuzzer();
+      } else if (resultJudgement === 'INVALID') {
+        setState('INSPECTION_INVALID');
+        soundService.playFailBuzzer();
       } else {
-        setState(!alignment.success ? 'ALIGNMENT_ERROR' : 'SYSTEM_ERROR');
+        setState('SYSTEM_ERROR');
         soundService.playFailBuzzer();
       }
 
