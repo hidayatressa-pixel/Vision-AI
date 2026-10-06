@@ -33,6 +33,50 @@ export class RuleEngine {
   ): RuleEvaluationResult {
     const defects: DefectItem[] = [];
 
+    // Configuration is part of inspection safety. A required screw without a
+    // usable golden reference would silently fall back to geometry-only
+    // detection, which is not acceptable for the production trial.
+    const requiredScrewROIs = revision.inspectionROIs.filter(
+      (roi) => roi.objectType === 'screw' && roi.isRequired
+    );
+    const referenceByRoi = new Map(
+      revision.referenceImages
+        .filter((reference) => Boolean(reference.imageUrl))
+        .map((reference) => [reference.roiId || reference.id, reference])
+    );
+    const missingReferences = requiredScrewROIs.filter(
+      (roi) => !referenceByRoi.has(roi.id)
+    );
+
+    if (
+      revision.masterWidth <= 0 ||
+      revision.masterHeight <= 0 ||
+      !revision.masterImageUrl ||
+      missingReferences.length > 0
+    ) {
+      const missing = missingReferences.map((roi) => roi.name).join(', ');
+      const reason = [
+        revision.masterWidth <= 0 || revision.masterHeight <= 0 ? 'master dimensions are not calibrated' : '',
+        !revision.masterImageUrl ? 'master image is missing' : '',
+        missing ? `golden reference missing for: ${missing}` : '',
+      ].filter(Boolean).join('; ');
+
+      defects.push({
+        code: 'MASTER_CONFIGURATION_INVALID',
+        message: `Master configuration is not trial-safe: ${reason}`,
+        expected: 'Calibrated master image and golden reference for every required screw ROI',
+        actual: 'Configuration incomplete',
+      });
+
+      return {
+        judgement: 'INVALID',
+        primaryReason: defects[0].message,
+        defects,
+        expectedCount: revision.expectedObjectCount,
+        detectedCount: 0,
+      };
+    }
+
     // 1. Alignment is a prerequisite for a valid product judgement.
     // Failure to locate the reference does NOT prove the product is defective.
     // It is an INVALID inspection result; infrastructure/runtime failures are
