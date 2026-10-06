@@ -495,12 +495,20 @@ export function useInspectionPipeline({
       setState('SYSTEM_ERROR');
       soundService.playFailBuzzer();
 
+      // SAFETY: an inspection exception is a system fault. Do NOT clear
+      // the PLC interlock here. Clearing it could release the machine after
+      // an incomplete/unknown inspection. The interlock is released only by
+      // the normal part-removal lifecycle after the cycle is safely contained.
       try {
-        plcService.clearInterlock();
-      } catch (interlockError) {
+        plcService.logTimelineEvent(
+          'INTERLOCK_HELD_AFTER_ERROR',
+          'INTERLOCK',
+          'PLC interlock remains blocked because inspection ended with a system error'
+        );
+      } catch (timelineError) {
         console.error(
-          '[InspectionPipeline] Failed to clear PLC interlock:',
-          interlockError
+          '[InspectionPipeline] Failed to log held interlock state:',
+          timelineError
         );
       }
 
