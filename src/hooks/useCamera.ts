@@ -332,22 +332,50 @@ export function useCamera(options: UseCameraOptions = {}) {
         }
       };
 
+      const reportVideoState = (event: string) => {
+        console.info('[REMOTE VIDEO]', event, {
+          readyState: video.readyState,
+          networkState: video.networkState,
+          paused: video.paused,
+          ended: video.ended,
+          currentTime: video.currentTime,
+          width: video.videoWidth,
+          height: video.videoHeight,
+          hasSrcObject: video.srcObject === stream,
+          tracks: stream.getVideoTracks().map((track) => ({
+            readyState: track.readyState,
+            enabled: track.enabled,
+            muted: track.muted,
+          })),
+        });
+      };
+
       const startPlayback = async () => {
         syncVideoDimensions();
+        reportVideoState('play-request');
         if (video.srcObject !== stream) return;
         try {
           await video.play();
         } catch (error) {
-          // AbortError is harmless when the element is replaced/unmounted.
-          // Other errors are useful diagnostics.
           if (error instanceof DOMException && error.name === 'AbortError') return;
           console.warn('Remote video playback warning:', error);
         }
         syncVideoDimensions();
+        reportVideoState('play-resolved');
       };
 
-      video.addEventListener('loadedmetadata', syncVideoDimensions, { once: true });
-      video.addEventListener('loadeddata', startPlayback, { once: true });
+      video.addEventListener('loadedmetadata', () => {
+        syncVideoDimensions();
+        reportVideoState('loadedmetadata');
+      }, { once: true });
+      video.addEventListener('loadeddata', () => {
+        void startPlayback();
+      }, { once: true });
+      video.addEventListener('canplay', () => reportVideoState('canplay'), { once: true });
+      video.addEventListener('playing', () => reportVideoState('playing'), { once: true });
+      if ('requestVideoFrameCallback' in video) {
+        video.requestVideoFrameCallback(() => reportVideoState('first-frame'));
+      }
       void startPlayback();
     }
 
