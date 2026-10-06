@@ -26,7 +26,7 @@ const anchors = [
   { id: 'anchor-D', name: 'Anchor D (Bottom-Right)', x: 0.75, y: 0.7333, searchRadius: 0.12, patchRadius: 24, description: 'Alignment fiducial D' },
 ];
 
-const referenceImages: ReferenceImage[] = Array.from({ length: 6 }, (_, index) => ({
+const referenceImages: ReferenceImage[] = Array.from({ length: 8 }, (_, index) => ({
   id: `ref-${index + 1}`,
   label: `Reference ${index + 1}`,
   roiId: eightScrewROIs[index].id,
