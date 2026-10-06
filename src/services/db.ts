@@ -93,6 +93,10 @@ class DatabaseService {
     } catch {}
   }
 
+  private removeAllLocalHistory(): void {
+    try { localStorage.removeItem(this.localHistoryKey); } catch {}
+  }
+
   private mergeHistory(cloud: InspectionRecord[], local: InspectionRecord[]): InspectionRecord[] {
     const merged = new Map<string, InspectionRecord>();
     [...local, ...cloud].forEach((record) => merged.set(record.id, record));
@@ -240,8 +244,8 @@ class DatabaseService {
   }
 
   public async clearInspectionHistory(): Promise<void> {
-    // Explicit non-null filter keeps this operation compatible with PostgREST
-    // and makes the destructive intent obvious.
+    this.removeAllLocalHistory();
+    if (!SUPABASE_URL || !SUPABASE_KEY) return;
     await this.request('?id=not.is.null', {
       method: 'DELETE',
       headers: { Prefer: 'return=minimal' },
