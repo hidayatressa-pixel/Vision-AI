@@ -35,3 +35,30 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+
+  aws-opencv5:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install AWS analyzer dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r aws/vision-analyzer/requirements.txt pytest
+
+      - name: Run AWS OpenCV 5 demo tests
+        run: pytest -q aws/vision-analyzer/test_app.py
+
+      - name: Build Lambda container
+        run: docker build -t vision-ai-aws-opencv5 aws/vision-analyzer
+
+      - name: Prove Lambda container uses OpenCV 5
+        run: |
+          docker run --rm --entrypoint python vision-ai-aws-opencv5 -c "import cv2; print(cv2.__version__); assert cv2.__version__.startswith('5.')"
