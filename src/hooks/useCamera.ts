@@ -312,14 +312,16 @@ export function useCamera(options: UseCameraOptions = {}) {
     currentDeviceIdRef.current = 'REMOTE_PHONE';
 
     const video = videoRef.current;
-    if (video && video.srcObject !== stream) {
-      // Do not clear srcObject before assigning the remote stream. Clearing it
-      // can abort an in-flight play() call and causes the browser's
-      // "play() request was interrupted by a new load request" race.
+    if (video) {
+      // Always re-assert the remote stream and playback state. The video element
+      // can survive while React remounts/reconciles the inspection stage.
+      // Do not clear srcObject first: that can interrupt an in-flight play().
       video.muted = true;
       video.autoplay = true;
       video.playsInline = true;
-      video.srcObject = stream;
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
+      }
 
       const syncVideoDimensions = () => {
         if (video.videoWidth > 0 && video.videoHeight > 0) {
