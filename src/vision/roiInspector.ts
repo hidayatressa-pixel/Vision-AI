@@ -302,6 +302,12 @@ export class ROIInspector {
       // 3. Evaluate tolerance and confidence
       const minConfidence = roi.minConfidence || tolerance.minScrewConfidence || 0.65;
       const isPresent = detection.isPresent && detection.confidence >= minConfidence;
+      const uncertaintyFloor = Math.max(0.25, minConfidence * 0.55);
+      const evidence: ROIInspectionResult['evidence'] = isPresent
+        ? 'PRESENT'
+        : detection.confidence >= uncertaintyFloor
+          ? 'UNCERTAIN'
+          : 'ABSENT';
 
       let positionOffsetPx = 0;
       let positionOffsetMm = 0;
@@ -329,7 +335,7 @@ export class ROIInspector {
 
       let status: 'PASS' | 'FAIL' | 'WARNING' = 'PASS';
       if (!isPresent) {
-        status = roi.isRequired ? 'FAIL' : 'WARNING';
+        status = evidence === 'UNCERTAIN' ? 'WARNING' : roi.isRequired ? 'FAIL' : 'WARNING';
       } else if (!isWithinTolerance) {
         status = 'FAIL';
       }
@@ -354,6 +360,7 @@ export class ROIInspector {
         isWithinTolerance,
         confidence: Math.round(detection.confidence * 100) / 100,
         isPresent,
+        evidence,
         status,
         failureReason,
       });
