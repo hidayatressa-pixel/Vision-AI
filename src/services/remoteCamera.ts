@@ -38,8 +38,10 @@ export function createRemoteCameraSession(): RemoteCameraSession {
       peer.on('call', (incoming) => {
         call?.close();
         call = incoming;
-        incoming.answer();
+        // Register the stream listener before answering so a fast WebRTC
+        // negotiation cannot deliver the remote MediaStream before the handler exists.
         incoming.on('stream', onStream);
+        incoming.answer();
         incoming.on('close', () => {
           if (call === incoming) call = null;
         });
