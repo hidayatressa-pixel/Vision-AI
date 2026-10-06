@@ -20,6 +20,7 @@ export class PresenceDetector {
   private stabilizationStartTime: number | null = null;
   private isCurrentlyPresent: boolean = false;
   private hasInspectedCurrentPart: boolean = false;
+  private removalCandidateSince: number | null = null;
 
   public setBaseline(stats: { mean: number; variance: number }) {
     this.baselineStats = stats;
@@ -28,6 +29,7 @@ export class PresenceDetector {
   public resetPartState() {
     this.isCurrentlyPresent = false;
     this.hasInspectedCurrentPart = false;
+    this.removalCandidateSince = null;
     this.stabilizationStartTime = null;
     this.prevFrame = null;
   }
@@ -89,9 +91,21 @@ export class PresenceDetector {
     } else {
       // Part is present. Check if it has been removed
       if (diff < removalThreshold) {
-        this.isCurrentlyPresent = false;
-        this.hasInspectedCurrentPart = false;
-        this.stabilizationStartTime = null;
+        // Removal is a safety-critical lifecycle transition. A single dark or
+        // low-contrast frame must never release the judgement latch.
+        // Require the ROI to remain below the removal threshold continuously
+        // for a short debounce window before declaring the part removed.
+        const removalDebounceMs = 300;
+        if (this.removalCandidateSince === null) {
+          this.removalCandidateSince = now;
+        } else if (now - this.removalCandidateSince >= removalDebounceMs) {
+          this.isCurrentlyPresent = false;
+          this.hasInspectedCurrentPart = false;
+          this.removalCandidateSince = null;
+          this.stabilizationStartTime = null;
+        }
+      } else {
+        this.removalCandidateSince = null;
       }
     }
 
