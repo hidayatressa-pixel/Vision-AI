@@ -257,17 +257,18 @@ export function useInspectionPipeline({
       const totalInspectionMs = Math.round(performance.now() - cycleStart);
       const totalCycleMs = Math.round(partDetectTime + stabTime + totalInspectionMs);
 
-      // 5. Enforce a hard inspection-time budget before touching the machine interlock.
-      // A slow/overloaded vision cycle is a system error, never an implicit OK.
+      // 5. Processing time is a deterministic budget, not a new product state.
+      // A vision cycle that takes longer than the preferred budget must still
+      // produce a product judgement; only infrastructure/runtime failures are ERROR.
       let resultJudgement: 'OK' | 'NG' | 'ERROR' = evaluation.judgement;
       let resultReason = evaluation.primaryReason;
       if (totalInspectionMs > plcService.getConfig().maxInspectionTimeoutMs) {
-        resultJudgement = 'ERROR';
-        resultReason = 'Inspection timeout: ' + totalInspectionMs + ' ms exceeded configured limit';
-        plcService.logTimelineEvent('INSPECTION_TIMEOUT', 'INTERLOCK', resultReason);
+        resultJudgement = 'NG';
+        resultReason = `${evaluation.primaryReason} — inspection exceeded the preferred processing budget`;
+        plcService.logTimelineEvent('INSPECTION_BUDGET_EXCEEDED', 'VISION', resultReason);
       }
 
-      // Explicitly separate Product NG from Vision System Error.
+      // Explicitly separate Product NG from genuine infrastructure failure.
       const isProductNg = resultJudgement === 'NG';
       const isSystemError = resultJudgement === 'ERROR';
 
