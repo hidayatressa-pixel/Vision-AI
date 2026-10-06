@@ -147,82 +147,180 @@ export function useInspectionPipeline({
       const cycleStart = performance.now();
 
       try {
+        // Vision validation uses multiple frames inside a hard 500 ms window.
+      // A single noisy frame must not decide the product. Two matching
+      // consecutive judgements are enough to finalize early; otherwise the
+      // strongest consensus available at the deadline becomes the result.
+      const validationStartedAt = performance.now();
+      const validationDeadlineMs = 500;
+      const maxValidationFrames = 3;
+
+      type VisionSample = {
+        frame: ImageData;
+        alignment: AlignmentResult;
+        roiResults: ROIInspectionResult[];
+        extraObjects: ExtraDetectedObject[];
+        evaluation: ReturnType<typeof ruleEngine.evaluate>;
+        alignmentMs: number;
+        roiMs: number;
+        ruleMs: number;
+      };
+
+      const samples: VisionSample[] = [];
+
+      const inspectVisionFrame = async (candidateFrame: ImageData): Promise<VisionSample> => {
         setState('ALIGNING');
-      plcService.logTimelineEvent('ALIGNMENT_STARTED', 'VISION', 'Locating reference fiducials A, B, C, D');
-
-      // OpenCV 5 preprocessing is intentionally performed on the captured
-      // inspection frame (not only as a demo/diagnostic path). The resulting
-      // normalized grayscale image feeds the existing alignment and ROI engines.
-      const opencvFrame = await preprocessInspectionFrame(frameData);
-      const gray = opencvFrame.gray;
-      console.debug('[OpenCV 5] inspection preprocessing', {
-        processingMs: Math.round(opencvFrame.processingMs),
-        edgeDensity: Number(opencvFrame.edgeDensity.toFixed(4)),
-      });
-
-      // 1. Reference Alignment
-      const alignStart = performance.now();
-      const alignment = alignmentEngine.calculateAlignment(
-        gray,
-        revision.masterWidth,
-        revision.masterHeight,
-        revision.anchors,
-        revision.tolerance
-      );
-      const alignTime = performance.now() - alignStart;
-      setLatestAlignment(alignment);
-
-      if (alignment.success) {
-        plcService.logTimelineEvent('ALIGNMENT_SUCCESS', 'VISION', `Aligned with ${alignment.matchedAnchorCount} anchors (Rot: ${alignment.rotationDeg}°)`);
-      } else {
-        plcService.logTimelineEvent('ALIGNMENT_FAILED', 'VISION', alignment.errorMessage || 'Anchors not found');
-      }
-
-      // 2. Transformed ROI Detection
-      // IMPORTANT: ROI inspection is only valid after successful alignment.
-      // If alignment fails, the Rule Engine must receive empty ROI results so
-      // it can classify the cycle as a SYSTEM ERROR rather than Product NG.
-      let roiResults: ROIInspectionResult[] = [];
-      let extraObjects: ExtraDetectedObject[] = [];
-      let roiTime = 0;
-
-      if (alignment.success) {
-        setState('INSPECTING');
         plcService.logTimelineEvent(
-          'ROI_INSPECTION_STARTED',
+          'ALIGNMENT_STARTED',
           'VISION',
-          `Evaluating ${revision.inspectionROIs.length} transformed screw ROIs with visual reference verification`
+          'Locating reference fiducials A, B, C, D'
         );
 
-        const roiStart = performance.now();
-        const inspection = await roiInspector.inspectROIs(
+        const opencvFrame = await preprocessInspectionFrame(candidateFrame);
+        const gray = opencvFrame.gray;
+
+        const alignStart = performance.now();
+        const alignment = alignmentEngine.calculateAlignment(
           gray,
-          revision.inspectionROIs,
-          alignment,
-          revision.tolerance,
           revision.masterWidth,
           revision.masterHeight,
-          revision.referenceImages || [],
-          frameData
+          revision.anchors,
+          revision.tolerance
+        );
+        const alignmentMs = performance.now() - alignStart;
+
+        if (alignment.success) {
+          plcService.logTimelineEvent(
+            'ALIGNMENT_SUCCESS',
+            'VISION',
+            `Aligned with ${alignment.matchedAnchorCount} anchors (Rot: ${alignment.rotationDeg}°)`
+          );
+        } else {
+          plcService.logTimelineEvent(
+            'ALIGNMENT_FAILED',
+            'VISION',
+            alignment.errorMessage || 'Anchors not found'
+          );
+        }
+
+        let roiResults: ROIInspectionResult[] = [];
+        let extraObjects: ExtraDetectedObject[] = [];
+        let roiMs = 0;
+
+        if (alignment.success) {
+          setState('INSPECTING');
+          const roiStart = performance.now();
+          const inspection = await roiInspector.inspectROIs(
+            gray,
+            revision.inspectionROIs,
+            alignment,
+            revision.tolerance,
+            revision.masterWidth,
+            revision.masterHeight,
+            revision.referenceImages || [],
+            candidateFrame
+          );
+          roiResults = inspection.roiResults;
+          extraObjects = inspection.extraObjects;
+          roiMs = performance.now() - roiStart;
+        }
+
+        const ruleStart = performance.now();
+        const evaluation = ruleEngine.evaluate(
+          revision,
+          alignment,
+          roiResults,
+          extraObjects
+        );
+        const ruleMs = performance.now() - ruleStart;
+
+        return {
+          frame: candidateFrame,
+          alignment,
+          roiResults,
+          extraObjects,
+          evaluation,
+          alignmentMs,
+          roiMs,
+          ruleMs,
+        };
+      };
+
+      let candidateFrame = frameData;
+
+      while (
+        samples.length < maxValidationFrames &&
+        performance.now() - validationStartedAt < validationDeadlineMs
+      ) {
+        const sample = await inspectVisionFrame(candidateFrame);
+        samples.push(sample);
+
+        const lastTwo = samples.slice(-2);
+        if (
+          lastTwo.length === 2 &&
+          lastTwo[0].evaluation.judgement === lastTwo[1].evaluation.judgement &&
+          lastTwo[0].evaluation.judgement !== 'ERROR'
+        ) {
+          break;
+        }
+
+        if (samples.length >= maxValidationFrames) break;
+
+        const remaining = validationDeadlineMs - (performance.now() - validationStartedAt);
+        if (remaining <= 0) break;
+
+        // Give the camera a chance to provide a genuinely different frame.
+        await new Promise<void>((resolve) =>
+          window.setTimeout(resolve, Math.min(60, remaining))
         );
 
-        roiResults = inspection.roiResults;
-        extraObjects = inspection.extraObjects;
-        roiTime = performance.now() - roiStart;
-
-        setLatestRoiResults(roiResults);
-        setLatestExtraObjects(extraObjects);
-      } else {
-        setState('INSPECTION_ERROR');
-        setLatestRoiResults([]);
-        setLatestExtraObjects([]);
-
-        plcService.logTimelineEvent(
-          'ROI_INSPECTION_SKIPPED',
-          'VISION',
-          `ROI inspection skipped because alignment failed: ${alignment.errorMessage || 'Unknown alignment error'}`
-        );
+        const nextFrame = captureFrame();
+        if (!nextFrame) break;
+        candidateFrame = nextFrame;
       }
+
+      if (samples.length === 0) {
+        throw new Error('No vision validation sample was produced');
+      }
+
+      // Select the consensus result. At the deadline, OK requires a majority
+      // of valid OK samples. Everything else fails safe to NG. This keeps
+      // algorithmic uncertainty out of SYSTEM_ERROR while preventing a single
+      // optimistic frame from producing an OK result.
+      const okSamples = samples.filter((sample) => sample.evaluation.judgement === 'OK');
+      const ngSamples = samples.filter((sample) => sample.evaluation.judgement === 'NG');
+
+      let selected = samples[samples.length - 1];
+      if (okSamples.length > ngSamples.length) {
+        selected = okSamples[okSamples.length - 1];
+      } else if (ngSamples.length > okSamples.length) {
+        selected = ngSamples[ngSamples.length - 1];
+      } else if (okSamples.length === ngSamples.length && ngSamples.length > 0) {
+        selected = ngSamples[ngSamples.length - 1];
+      }
+
+      const alignment = selected.alignment;
+      const roiResults = selected.roiResults;
+      const extraObjects = selected.extraObjects;
+      const evaluation = selected.evaluation;
+      const alignTime = Math.max(...samples.map((sample) => sample.alignmentMs));
+      const roiTime = Math.max(...samples.map((sample) => sample.roiMs));
+      const ruleTime = Math.max(...samples.map((sample) => sample.ruleMs));
+      const totalInspectionMs = Math.round(performance.now() - cycleStart);
+      const validationElapsedMs = Math.round(performance.now() - validationStartedAt);
+
+      setLatestAlignment(alignment);
+      setLatestRoiResults(roiResults);
+      setLatestExtraObjects(extraObjects);
+
+      plcService.logTimelineEvent(
+        'MULTI_FRAME_VALIDATION_COMPLETE',
+        'VISION',
+        `${samples.length} frame(s), ${validationElapsedMs}ms validation, final ${evaluation.judgement}`
+      );
+
+      // Use the frame belonging to the selected consensus sample for traceability.
+      frameData = selected.frame;
 
       // 3. Rule Engine Judgement
       const ruleStart = performance.now();
@@ -405,7 +503,7 @@ export function useInspectionPipeline({
       presenceDetectorRef.current.markPartInspected();
       isProcessingRef.current = false;
       }
-    }, [fps]);
+    }, [captureFrame, fps]);
 
   // Main real-time pipeline tick loop (~20 FPS)
   useEffect(() => {
