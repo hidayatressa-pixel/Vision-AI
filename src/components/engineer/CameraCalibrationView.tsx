@@ -26,9 +26,7 @@ interface CameraCalibrationViewProps {
   remoteStatus: 'idle' | 'starting' | 'waiting' | 'connected' | 'error';
   phoneCameraUrl: string;
   videoRef: React.Ref<HTMLVideoElement>;
-  sessionActive: boolean;
-  onStartSession: () => void;
-  onEndSession: () => void;
+  onNextSetup: () => void;
 }
 
 export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
@@ -47,9 +45,7 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
   remoteStatus,
   phoneCameraUrl,
   videoRef,
-  sessionActive,
-  onStartSession,
-  onEndSession,
+  onNextSetup,
 }) => {
   const [lightingStats, setLightingStats] = useState<{ mean: number; variance: number }>({
     mean: 120,
@@ -94,35 +90,23 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Session control: configuration first, detection only after explicit start. */}
-      <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+      {/* Step 1: device/camera setup gate. Detection is intentionally unavailable here. */}
+      <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-mono uppercase tracking-wider text-slate-500">Inspection Session</div>
-          <div className={`text-lg font-bold mt-1 ${sessionActive ? 'text-emerald-400' : 'text-amber-300'}`}>
-            {sessionActive ? 'CYCLE ACTIVE — AUTO DETECTION RUNNING' : 'SETUP MODE — DETECTION STOPPED'}
-          </div>
+          <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-400">Setup 01 / 05</div>
+          <div className="text-lg font-bold mt-1 text-white">DEVICE / CAMERA SETUP</div>
           <p className="text-[10px] text-slate-500 font-mono mt-1">
-            {sessionActive
-              ? 'Camera and configuration are locked while the automatic inspection cycle is running.'
-              : 'Connect the camera, verify the master, keep the jig empty, then start the automatic cycle.'}
+            Connect the production camera, verify the live stream, then continue to Master Part setup.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {sessionActive ? (
-            <button type="button" onClick={onEndSession} className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold hover:bg-slate-700">
-              End Session
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onStartSession}
-              disabled={cameraState !== 'streaming' && cameraState !== 'virtual_mode'}
-              className="px-5 py-2.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-400"
-            >
-              START CYCLE
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={onNextSetup}
+          disabled={cameraState !== 'streaming' && cameraState !== 'virtual_mode'}
+          className="px-5 py-2.5 rounded-xl bg-cyan-500 text-slate-950 text-xs font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-cyan-400"
+        >
+          NEXT: MASTER PART →
+        </button>
       </div>
 
       {/* Top Banner */}
@@ -139,7 +123,7 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
 
         <button
           onClick={handleZeroCalibrate}
-          disabled={sessionActive}
+          disabled={false}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:bg-cyan-400 transition-colors shadow-lg"
         >
           <RefreshCw className="w-4 h-4" />
