@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { Layers, Plus, Check, Edit3, Copy, ShieldCheck, Images } from 'lucide-react';
 import { MasterProduct, MasterRevision } from '../../types/master';
 import { dbService } from '../../services/db';
+import { getMasterValidationChecks } from '../../services/setupValidation';
 
 interface MasterManagerProps {
   masters: MasterProduct[];
@@ -16,6 +17,8 @@ interface MasterManagerProps {
   onRefreshMasters: () => void;
   onOpenSetupModal: (master: MasterProduct, revision: MasterRevision) => void;
   onCreateNewMaster: () => void;
+  onBackSetup: () => void;
+  onContinueSetup: () => void;
 }
 
 export const MasterManager: React.FC<MasterManagerProps> = ({
@@ -26,11 +29,15 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
   onRefreshMasters,
   onOpenSetupModal,
   onCreateNewMaster,
+  onBackSetup,
+  onContinueSetup,
 }) => {
   const [selectedMasterId, setSelectedMasterId] = useState<string>(activeMaster?.id || masters[0]?.id || '');
 
   const currentMaster = masters.find((m) => m.id === selectedMasterId) || masters[0];
   const previewRevision = currentMaster?.revisions.find((r) => r.id === currentMaster.activeRevisionId) || currentMaster?.revisions[0];
+  const activeMasterChecks = activeRevision ? getMasterValidationChecks(activeRevision) : [];
+  const activeMasterReady = Boolean(activeRevision) && activeMasterChecks.every((check) => check.valid);
 
   const handleActivateRevision = async (master: MasterProduct, revisionId: string) => {
     const updated: MasterProduct = {
@@ -72,25 +79,28 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+      {/* Step 2: master part setup gate. */}
+      <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-cyan-400">
-            <Layers className="w-5 h-5" />
-            <h2 className="text-xl font-bold text-white">Master Product Catalog & Versioning</h2>
-          </div>
+          <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-400">Setup 02 / 05</div>
+          <h2 className="text-xl font-bold text-white mt-1">MASTER PART SETUP</h2>
           <p className="text-xs text-slate-400 font-mono mt-1">
-            Manage reference masters, fiducial anchors, screw ROIs, and revision history.
+            Select the approved master and complete its validation before saving the station configuration.
           </p>
         </div>
-
-        <button
-          onClick={onCreateNewMaster}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:bg-cyan-400 transition-colors shadow-lg"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Product Master</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onBackSetup} className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-900 text-slate-300 text-xs font-bold hover:text-white hover:bg-slate-800">
+            ← BACK: CAMERA
+          </button>
+          <button
+            type="button"
+            onClick={onContinueSetup}
+            disabled={!activeMasterReady}
+            className="px-5 py-2.5 rounded-xl bg-cyan-500 text-slate-950 text-xs font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-cyan-400"
+          >
+            NEXT: VALIDATE SETUP →
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
