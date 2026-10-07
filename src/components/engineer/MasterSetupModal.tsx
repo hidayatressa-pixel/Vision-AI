@@ -10,6 +10,8 @@ import {
   Crosshair,
   Images,
   Upload,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import { InspectionROI, MasterProduct, MasterRevision } from '../../types/master';
 import { dbService } from '../../services/db';
@@ -288,35 +290,80 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Save changes to database
+  const references = editedRevision.referenceImages || [];
+  const validationChecks = [
+    {
+      label: 'Alignment anchors',
+      valid: editedRevision.anchors.length === 4,
+      detail: `${editedRevision.anchors.length}/4 configured`,
+      error: 'Exactly 4 alignment anchors are required.',
+    },
+    {
+      label: 'Inspection ROIs',
+      valid: editedRevision.inspectionROIs.length === 8,
+      detail: `${editedRevision.inspectionROIs.length}/8 configured`,
+      error: 'Exactly 8 screw inspection ROIs are required.',
+    },
+    {
+      label: 'Master image',
+      valid: Boolean(editedRevision.masterImageUrl?.trim()),
+      detail: editedRevision.masterImageUrl?.trim() ? 'Ready' : 'Missing',
+      error: 'A master image is required.',
+    },
+    {
+      label: 'Master resolution',
+      valid: editedRevision.masterWidth > 0 && editedRevision.masterHeight > 0,
+      detail: editedRevision.masterWidth > 0 && editedRevision.masterHeight > 0
+        ? `${editedRevision.masterWidth}×${editedRevision.masterHeight}`
+        : 'Invalid',
+      error: 'Master dimensions are invalid. Re-upload the approved master image so its native resolution can be captured.',
+    },
+    {
+      label: 'Reference images',
+      valid: references.length === 8 && references.every((reference) => Boolean(reference.imageUrl?.trim())),
+      detail: `${references.filter((reference) => Boolean(reference.imageUrl?.trim())).length}/8 images ready`,
+      error: references.length !== 8
+        ? `Exactly 8 master reference images are required (${references.length}/8 configured).`
+        : 'All 8 master reference images must contain a valid image.',
+    },
+    {
+      label: 'Reference IDs',
+      valid: new Set(references.map((reference) => reference.id)).size === references.length,
+      detail: new Set(references.map((reference) => reference.id)).size === references.length ? 'Unique' : 'Duplicate IDs',
+      error: 'Master reference IDs must be unique.',
+    },
+    {
+      label: 'Expected objects',
+      valid: editedRevision.expectedObjectCount === 8 && editedRevision.expectedObjectCount === editedRevision.inspectionROIs.length,
+      detail: `${editedRevision.expectedObjectCount}/8 expected`,
+      error: 'Expected object count must match the number of inspection ROIs.',
+    },
+    {
+      label: 'Position tolerance',
+      valid: editedRevision.tolerance.maxPositionOffsetPx > 0 && editedRevision.tolerance.maxPositionOffsetMm > 0,
+      detail: `±${editedRevision.tolerance.maxPositionOffsetMm} mm`,
+      error: 'Position tolerances must be greater than zero.',
+    },
+    {
+      label: 'Alignment confidence',
+      valid: editedRevision.tolerance.minAlignmentConfidence >= 0 && editedRevision.tolerance.minAlignmentConfidence <= 1,
+      detail: `${(editedRevision.tolerance.minAlignmentConfidence * 100).toFixed(0)}%`,
+      error: 'Alignment confidence must be between 0 and 1.',
+    },
+  ];
+
+  const isConfigurationValid = validationChecks.every((check) => check.valid);
+
+  useEffect(() => {
+    if (saveError) setSaveError(null);
+  }, [editedRevision]);
+
+    // Save changes to database
   const handleSave = async () => {
     setSaveError(null);
-    const tolerance = editedRevision.tolerance;
-    const errors: string[] = [];
-    if (editedRevision.anchors.length !== 4) errors.push('Exactly 4 alignment anchors are required.');
-    if (editedRevision.inspectionROIs.length !== 8) errors.push('Exactly 8 screw inspection ROIs are required.');
-    if (!editedRevision.masterImageUrl || !editedRevision.masterImageUrl.trim()) errors.push('A master image is required.');
-    if (editedRevision.masterWidth <= 0 || editedRevision.masterHeight <= 0) errors.push('Master dimensions are invalid. Re-upload the approved master image so its native resolution can be captured.');
-    const references = editedRevision.referenceImages || [];
-    if (references.length !== 8) {
-      errors.push(`Exactly 8 master reference images are required (${references.length}/8 configured).`);
-    }
-    if (references.some((reference) => !reference.imageUrl || !reference.imageUrl.trim())) {
-      errors.push('All 8 master reference images must contain a valid image.');
-    }
-    if (new Set(references.map((reference) => reference.id)).size !== references.length) {
-      errors.push('Master reference IDs must be unique.');
-    }
-    if (editedRevision.expectedObjectCount !== 8 || editedRevision.expectedObjectCount !== editedRevision.inspectionROIs.length) {
-      errors.push('Expected object count must match the number of inspection ROIs.');
-    }
-    if (tolerance.maxPositionOffsetPx <= 0 || tolerance.maxPositionOffsetMm <= 0) {
-      errors.push('Position tolerances must be greater than zero.');
-    }
-    if (tolerance.minAlignmentConfidence < 0 || tolerance.minAlignmentConfidence > 1) {
-      errors.push('Alignment confidence must be between 0 and 1.');
-    }
-    if (errors.length > 0) {
+
+    if (!isConfigurationValid) {
+      const errors = validationChecks.filter((check) => !check.valid).map((check) => check.error);
       setSaveError(errors.join(' '));
       return;
     }
@@ -328,9 +375,14 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
       updatedAt: new Date().toISOString(),
     };
 
-    await dbService.saveMaster(updatedMaster);
-    onSaved();
-    onClose();
+    try {
+      await dbService.saveMaster(updatedMaster);
+      onSaved();
+      onClose();
+    } catch (error) {
+      console.error('[MasterSetup] Save failed:', error);
+      setSaveError('Master could not be saved. Please retry. Check the browser console for technical details.');
+    }
   };
 
   if (!isOpen) return null;
@@ -355,17 +407,16 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {saveError && (
-              <div className="hidden md:block max-w-md text-[10px] text-red-300 bg-red-950/70 border border-red-500/50 rounded-lg px-2.5 py-1.5">
-                {saveError}
-              </div>
-            )}
             <button
               onClick={handleSave}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition-colors shadow-lg"
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-white font-bold text-xs transition-colors shadow-lg ${
+                isConfigurationValid
+                  ? 'bg-emerald-600 hover:bg-emerald-500'
+                  : 'bg-slate-700 hover:bg-slate-600'
+              }`}
             >
               <Save className="w-4 h-4" />
-              <span>Save & Update</span>
+              <span>{isConfigurationValid ? 'Save & Update' : 'Fix Validation'}</span>
             </button>
             <button
               onClick={onClose}
@@ -375,6 +426,18 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
             </button>
           </div>
         </div>
+
+        {saveError && (
+          <div className="border-b border-red-500/30 bg-red-950/40 px-6 py-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-red-200">Master cannot be saved</div>
+                <div className="mt-1 text-[11px] leading-5 text-red-300">{saveError}</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -498,6 +561,49 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
 
           {/* Right Control Panels */}
           <div className="space-y-4">
+            {/* Save Validation Status */}
+            <div className={`rounded-2xl border p-3 ${
+              isConfigurationValid
+                ? 'border-emerald-500/30 bg-emerald-500/5'
+                : 'border-amber-500/30 bg-amber-500/5'
+            }`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Master Validation</div>
+                  <div className={`mt-1 text-sm font-bold ${
+                    isConfigurationValid ? 'text-emerald-300' : 'text-amber-300'
+                  }`}>
+                    {isConfigurationValid ? 'READY TO SAVE' : 'CHECK REQUIRED ITEMS'}
+                  </div>
+                </div>
+                {isConfigurationValid ? (
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-amber-400" />
+                )}
+              </div>
+
+              <div className="mt-3 space-y-1.5">
+                {validationChecks.map((check) => (
+                  <div key={check.label} className="flex items-center justify-between gap-3 rounded-lg bg-slate-950/50 px-2.5 py-1.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {check.valid ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                      ) : (
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                      )}
+                      <span className={`truncate text-[10px] font-mono ${
+                        check.valid ? 'text-slate-300' : 'text-red-300'
+                      }`}>{check.label}</span>
+                    </div>
+                    <span className={`shrink-0 text-[10px] font-mono ${
+                      check.valid ? 'text-emerald-300' : 'text-red-300'
+                    }`}>{check.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Navigation Tabs */}
             <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
               <button
