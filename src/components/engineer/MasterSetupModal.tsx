@@ -298,11 +298,11 @@ export const MasterSetupModal: React.FC<MasterSetupModalProps> = ({
     if (!editedRevision.masterImageUrl || !editedRevision.masterImageUrl.trim()) errors.push('A master image is required.');
     if (editedRevision.masterWidth <= 0 || editedRevision.masterHeight <= 0) errors.push('Master dimensions are invalid. Re-upload the approved master image so its native resolution can be captured.');
     const references = editedRevision.referenceImages || [];
-    if (references.length !== 6) {
-      errors.push(`Exactly 6 master reference images are required (${references.length}/6 configured).`);
+    if (references.length !== 8) {
+      errors.push(`Exactly 8 master reference images are required (${references.length}/8 configured).`);
     }
     if (references.some((reference) => !reference.imageUrl || !reference.imageUrl.trim())) {
-      errors.push('All 6 master reference images must contain a valid image.');
+      errors.push('All 8 master reference images must contain a valid image.');
     }
     if (new Set(references.map((reference) => reference.id)).size !== references.length) {
       errors.push('Master reference IDs must be unique.');
