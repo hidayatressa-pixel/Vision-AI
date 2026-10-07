@@ -228,7 +228,6 @@ export default function App() {
             fps={camera.fps}
             videoDimensions={camera.videoDimensions}
             captureFrame={camera.captureFrame}
-            calibrateBackground={pipeline.calibrateBackground}
             onNextSetup={handleNextCameraSetup}
             onSwitchToStandSimulator={() => camera.enableVirtualMode('PERFECT_PASS')}
           />
