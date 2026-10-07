@@ -21,6 +21,7 @@ import { MasterProduct, MasterRevision } from './types/master';
 import { CameraSourceMode } from './types/device';
 import { createRemoteCameraSession } from './services/remoteCamera';
 import { PhoneCameraView } from './components/camera/PhoneCameraView';
+import { getMasterValidationChecks } from './services/setupValidation';
 
 function isPhoneCameraRoute() {
   const params = new URLSearchParams(window.location.search);
@@ -46,6 +47,8 @@ export default function App() {
   const [remoteStatus, setRemoteStatus] = useState<'idle' | 'starting' | 'waiting' | 'connected' | 'error'>('idle');
   const [processingFps, setProcessingFps] = useState(5);
   const [sessionActive, setSessionActive] = useState(false);
+  const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [setupValidated, setSetupValidated] = useState(false);
   const remoteSession = useMemo(() => createRemoteCameraSession(), []);
 
   const cameraOptions = React.useMemo(() => ({ preferredFacingMode: 'environment' as const, preferredResolution: { width: 800, height: 600 } }), []);
@@ -140,19 +143,64 @@ export default function App() {
     await dbService.saveMaster(newProduct); await loadMasters(); handleSelectMaster(newProduct, revisionId);
   };
 
-  const handleStartSession = async () => {
-    if (sessionActive || !activeRevision) return;
-    const cameraReady = camera.cameraState === 'streaming' || camera.cameraState === 'virtual_mode';
+  const cameraReady = camera.cameraState === 'streaming' || camera.cameraState === 'virtual_mode';
+  const masterValidationChecks = activeRevision ? getMasterValidationChecks(activeRevision) : [];
+  const masterReady = Boolean(activeMaster && activeRevision) && masterValidationChecks.every((check) => check.valid);
+
+  const handleNavigate = (tab: ActiveTab) => {
+    // Initial setup behaves like an authentication gate. Until setup is
+    // validated, navigation cannot bypass the required sequence.
+    if (setupStep < 5) return;
+    setActiveTab(tab);
+  };
+
+  const handleNextCameraSetup = () => {
     if (!cameraReady) return;
+    setSetupStep(2);
+    setActiveTab('MASTERS');
+  };
+
+  const handleBackToCameraSetup = () => {
+    if (sessionActive) return;
+    setSetupStep(1);
+    setSetupValidated(false);
+    setActiveTab('CAMERA_SETUP');
+  };
+
+  const handleNextMasterSetup = () => {
+    if (!masterReady) return;
+    setSetupStep(3);
+    setSetupValidated(false);
+    setActiveTab('MASTERS');
+  };
+
+  const handleSaveConfiguration = () => {
+    if (!cameraReady || !masterReady) return;
+    setSetupValidated(true);
+    setSetupStep(4);
+  };
+
+  const handleBackToMasterSetup = () => {
+    if (sessionActive) return;
+    setSetupValidated(false);
+    setSetupStep(2);
+    setActiveTab('MASTERS');
+  };
+
+  const handleStartSession = async () => {
+    if (sessionActive || !setupValidated || !cameraReady || !masterReady) return;
     const started = await pipeline.startSession();
     if (started) {
       setSessionActive(true);
+      setSetupStep(5);
       setActiveTab('INSPECTION');
     }
   };
 
   const handleEndSession = () => {
     setSessionActive(false);
+    setSetupValidated(false);
+    setSetupStep(1);
     pipeline.resetPipeline();
     setActiveTab('CAMERA_SETUP');
   };
@@ -162,17 +210,124 @@ export default function App() {
 
   return (
     <div className="min-h-screen rvi-app text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} role={role} setRole={() => undefined} activeMaster={activeMaster} activeRevision={activeRevision} isMuted={isMuted} toggleMute={toggleMute} pendingSyncCount={pendingSyncCount} onSync={handleSync} />
+      <Navbar activeTab={activeTab} setActiveTab={handleNavigate} role={role} setRole={() => undefined} activeMaster={activeMaster} activeRevision={activeRevision} isMuted={isMuted} toggleMute={toggleMute} pendingSyncCount={pendingSyncCount} onSync={handleSync} />
       <main className="rvi-main flex-1 max-w-[1500px] w-full mx-auto p-3 sm:p-5 lg:p-6">
-        {activeTab === 'INSPECTION' && <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} processingFps={processingFps} setProcessingFps={setProcessingFps} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} calibrateBackground={pipeline.calibrateBackground} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => setActiveTab('SETTINGS')} />}
-        {activeTab === 'HISTORY' && <InspectionHistoryView onRefreshStats={loadMasters} />}
-        {activeTab === 'SETTINGS' && <SettingsView onNavigate={setActiveTab} onClose={() => setActiveTab('INSPECTION')} />}
-        {activeTab === 'MASTERS' && <MasterManager masters={masters} activeMaster={activeMaster} activeRevision={activeRevision} onSelectMaster={handleSelectMaster} onRefreshMasters={loadMasters} onOpenSetupModal={handleOpenSetupModal} onCreateNewMaster={handleCreateNewMaster} />}
-        {activeTab === 'CAMERA_SETUP' && <CameraCalibrationView devices={camera.devices} selectedDeviceId={camera.selectedDeviceId} setSelectedDeviceId={camera.setSelectedDeviceId} sourceMode={cameraSourceMode} setSourceMode={setCameraSourceMode} cameraState={camera.cameraState} remotePeerId={remotePeerId} remoteStatus={remoteStatus} phoneCameraUrl={phoneCameraUrl} videoRef={camera.videoRef} fps={camera.fps} videoDimensions={camera.videoDimensions} captureFrame={camera.captureFrame} calibrateBackground={pipeline.calibrateBackground} sessionActive={sessionActive} onStartSession={handleStartSession} onEndSession={handleEndSession} onSwitchToStandSimulator={() => camera.enableVirtualMode('PERFECT_PASS')} />}
-        {activeTab === 'PLC_SETUP' && <PLCConfigurationView />}
-        {activeTab === 'DIAGNOSTICS' && <DiagnosticsModal metrics={pipeline.liveMetrics} />}
-      </main>
-      {isSetupModalOpen && setupMaster && setupRevision && <MasterSetupModal master={setupMaster} revision={setupRevision} isOpen={isSetupModalOpen} onClose={() => setIsSetupModalOpen(false)} onSaved={loadMasters} />}
+        {setupStep === 1 && (
+          <CameraCalibrationView
+            devices={camera.devices}
+            selectedDeviceId={camera.selectedDeviceId}
+            setSelectedDeviceId={camera.setSelectedDeviceId}
+            sourceMode={cameraSourceMode}
+            setSourceMode={setCameraSourceMode}
+            cameraState={camera.cameraState}
+            remotePeerId={remotePeerId}
+            remoteStatus={remoteStatus}
+            phoneCameraUrl={phoneCameraUrl}
+            videoRef={camera.videoRef}
+            fps={camera.fps}
+            videoDimensions={camera.videoDimensions}
+            captureFrame={camera.captureFrame}
+            calibrateBackground={pipeline.calibrateBackground}
+            onNextSetup={handleNextCameraSetup}
+            onSwitchToStandSimulator={() => camera.enableVirtualMode('PERFECT_PASS')}
+          />
+        )}
+
+        {setupStep === 2 && (
+          <MasterManager
+            masters={masters}
+            activeMaster={activeMaster}
+            activeRevision={activeRevision}
+            onSelectMaster={handleSelectMaster}
+            onRefreshMasters={loadMasters}
+            onOpenSetupModal={handleOpenSetupModal}
+            onCreateNewMaster={handleCreateNewMaster}
+            onBackSetup={handleBackToCameraSetup}
+            onContinueSetup={handleNextMasterSetup}
+          />
+        )}
+
+        {setupStep === 3 && (
+          <section className="space-y-5">
+            <div className="rounded-2xl border border-cyan-500/30 bg-slate-950 p-5">
+              <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-400">Setup 03 / 05</div>
+              <h1 className="mt-1 text-xl font-bold text-white">SAVE CONFIGURATION + VALIDATE SETUP</h1>
+              <p className="mt-1 text-xs font-mono text-slate-500">All required station configuration must pass before the operation screen is unlocked.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <div className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-3">Device / Camera</div>
+                <div className="flex items-center justify-between rounded-xl bg-slate-950 px-4 py-3">
+                  <span className="text-sm text-white">Camera stream</span>
+                  <span className={cameraReady ? "text-emerald-300 text-xs font-bold" : "text-red-300 text-xs font-bold"}>{cameraReady ? 'READY' : 'NOT READY'}</span>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <div className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-3">Master Part</div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between rounded-xl bg-slate-950 px-4 py-3">
+                    <span className="text-sm text-white truncate">{activeMaster?.productCode || 'No master selected'}</span>
+                    <span className={masterReady ? "text-emerald-300 text-xs font-bold" : "text-red-300 text-xs font-bold"}>{masterReady ? 'VALID' : 'INVALID'}</span>
+                  </div>
+                  <div className="space-y-1">
+                    {masterValidationChecks.map((check) => (
+                      <div key={check.label} className="flex items-center justify-between gap-3 text-[10px] font-mono">
+                        <span className={check.valid ? 'text-slate-400' : 'text-red-300'}>{check.label}</span>
+                        <span className={check.valid ? 'text-emerald-300' : 'text-red-300'}>{check.valid ? 'PASS' : check.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+              <button type="button" onClick={handleBackToMasterSetup} className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-950 text-slate-300 text-xs font-bold hover:text-white">← BACK: MASTER PART</button>
+              <button
+                type="button"
+                onClick={handleSaveConfiguration}
+                disabled={!cameraReady || !masterReady}
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-400"
+              >
+                SAVE CONFIGURATION + VALIDATE
+              </button>
+            </div>
+          </section>
+        )}
+
+        {setupStep === 4 && (
+          <section className="space-y-5">
+            <div className="rounded-2xl border border-emerald-500/30 bg-slate-950 p-6 text-center">
+              <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-emerald-400">Setup 04 / 05</div>
+              <h1 className="mt-2 text-2xl font-black text-white">SETUP VALIDATED ✓</h1>
+              <p className="mt-2 text-xs font-mono text-slate-400">Camera and master configuration are locked for this operation session.</p>
+            </div>
+            <div className="mx-auto max-w-2xl rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                <div className="rounded-xl bg-slate-950 p-4"><div className="text-[10px] font-mono text-slate-500">CAMERA</div><div className="mt-1 font-bold text-emerald-300">READY</div></div>
+                <div className="rounded-xl bg-slate-950 p-4"><div className="text-[10px] font-mono text-slate-500">MASTER</div><div className="mt-1 font-bold text-emerald-300">VALID</div></div>
+                <div className="rounded-xl bg-slate-950 p-4"><div className="text-[10px] font-mono text-slate-500">CONFIG</div><div className="mt-1 font-bold text-emerald-300">LOCKED</div></div>
+              </div>
+              <button type="button" onClick={handleStartSession} className="w-full rounded-2xl bg-emerald-500 py-4 text-sm font-black text-slate-950 hover:bg-emerald-400">
+                START
+              </button>
+              <button type="button" onClick={handleBackToMasterSetup} className="mt-3 w-full rounded-xl border border-slate-800 py-2.5 text-xs font-bold text-slate-400 hover:text-white">
+                ← BACK TO CONFIGURATION
+              </button>
+            </div>
+          </section>
+        )}
+
+        {setupStep === 5 && activeTab === 'INSPECTION' && (
+          <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} processingFps={processingFps} setProcessingFps={setProcessingFps} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} calibrateBackground={pipeline.calibrateBackground} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => setActiveTab('SETTINGS')} />}
+        {setupStep === 5 && activeTab === 'HISTORY' && <InspectionHistoryView onRefreshStats={loadMasters} />}
+        {setupStep === 5 && activeTab === 'SETTINGS' && <SettingsView onNavigate={handleNavigate} onClose={() => setActiveTab('INSPECTION')} />}
+        {setupStep === 5 && activeTab === 'MASTERS' && <MasterManager masters={masters} activeMaster={activeMaster} activeRevision={activeRevision} onSelectMaster={handleSelectMaster} onRefreshMasters={loadMasters} onOpenSetupModal={handleOpenSetupModal} onCreateNewMaster={handleCreateNewMaster} onBackSetup={handleBackToCameraSetup} onContinueSetup={handleNextMasterSetup} />}
+        {setupStep === 5 && activeTab === 'PLC_SETUP' && <PLCConfigurationView />}
+        {setupStep === 5 && activeTab === 'DIAGNOSTICS' && <DiagnosticsModal metrics={pipeline.liveMetrics} />}
+      
+      {setupStep === 2 && isSetupModalOpen && setupMaster && setupRevision && <MasterSetupModal master={setupMaster} revision={setupRevision} isOpen={isSetupModalOpen} onClose={() => setIsSetupModalOpen(false)} onSaved={loadMasters} />}
     </div>
   );
 }
