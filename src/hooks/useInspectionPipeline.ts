@@ -27,6 +27,8 @@ import { PresenceDetector } from '../vision/presenceDetector';
 import { roiInspector } from '../vision/roiInspector';
 import { ruleEngine } from '../vision/ruleEngine';
 import { preprocessInspectionFrame } from '../vision/opencvEngine';
+import { getRuntimeIdentity as getVisionRuntimeIdentity } from '../services/runtimeConfig';
+import { markInspectionLifecycleComplete, sendInspectionResult, sendStandbyEvent } from '../services/visionCloud';
 
 export interface UseInspectionPipelineProps {
   activeMaster: MasterProduct | null;
@@ -525,7 +527,24 @@ export function useInspectionPipeline({
 
       setCurrentResult(record);
 
-      // 7. Audio Feedback and State Display
+      // 7. Send the completed inspection event to AWS without blocking the
+      // local vision/PLC lifecycle. OpenCV remains local; AWS receives the event.
+      const cloudIdentity = getVisionRuntimeIdentity();
+      sendInspectionResult({
+        status: resultJudgement,
+        alignmentConfidence: alignment.confidence,
+        roiConfidences: roiResults.map((roi) => roi.confidence),
+        jig: cloudIdentity.stationId,
+        inspectionId,
+        productCode: master.productCode,
+        revisionCode: revision.revisionCode,
+        detectedCount: evaluation.detectedCount,
+        expectedCount: evaluation.expectedCount,
+        reason: resultReason,
+      });
+      markInspectionLifecycleComplete(resultJudgement);
+
+      // 8. Audio Feedback and State Display
       if (resultJudgement === 'OK') {
         setState('JUDGEMENT_OK');
         soundService.playPassChime();
@@ -540,7 +559,7 @@ export function useInspectionPipeline({
         soundService.playFailBuzzer();
       }
 
-      // 8. Asynchronous Database Persistence (Non-blocking)
+      // 9. Asynchronous Database Persistence (Non-blocking)
       const dbSaveStart = performance.now();
       dbService
         .saveInspectionRecord(record)
@@ -552,7 +571,7 @@ export function useInspectionPipeline({
         })
         .catch(console.error);
 
-      // 9. Freeze the completed judgement. The live loop owns the lifecycle.
+      // 10. Freeze the completed judgement. The live loop owns the lifecycle.
       // This result remains locked until the presence detector confirms that
       // the physical part has been removed from the jig. There is no timeout,
       // operator reset, or reposition-based reinspection path.
@@ -659,6 +678,8 @@ export function useInspectionPipeline({
               setMotionDelta(0);
               detectionStartTimeRef.current = 0;
               cycleStartTimeRef.current = 0;
+              const standbyIdentity = getVisionRuntimeIdentity();
+              sendStandbyEvent(standbyIdentity.stationId);
             } else {
               setState('SYSTEM_ERROR');
             }
