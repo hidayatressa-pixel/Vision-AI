@@ -20,7 +20,6 @@ interface CameraCalibrationViewProps {
   fps: number;
   videoDimensions: { width: number; height: number };
   captureFrame: () => ImageData | null;
-  calibrateBackground: () => void;
   onSwitchToStandSimulator: () => void;
   remotePeerId: string;
   remoteStatus: 'idle' | 'starting' | 'waiting' | 'connected' | 'error';
@@ -51,7 +50,6 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
     mean: 120,
     variance: 450,
   });
-  const [calibratedMessage, setCalibratedMessage] = useState<string | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
 
   // Monitor lighting & contrast
@@ -67,11 +65,6 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
     return () => clearInterval(interval);
   }, [captureFrame]);
 
-  const handleZeroCalibrate = () => {
-    calibrateBackground();
-    setCalibratedMessage('Empty stand background calibrated! Baseline saved.');
-    setTimeout(() => setCalibratedMessage(null), 3000);
-  };
 
   const isLightingAdequate = lightingStats.mean >= 40 && lightingStats.mean <= 220;
   const isContrastAdequate = lightingStats.variance >= 100;
@@ -121,22 +114,10 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleZeroCalibrate}
-          disabled={false}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:bg-cyan-400 transition-colors shadow-lg"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>Calibrate Empty Stand</span>
-        </button>
+
       </div>
 
-      {calibratedMessage && (
-        <div className="bg-emerald-950/80 border border-emerald-500 rounded-xl p-3 text-xs font-mono text-emerald-300 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>{calibratedMessage}</span>
-        </div>
-      )}
+
 
       {sourceMode === 'PHONE_REMOTE' && (
         <div className="bg-black border border-cyan-500/30 rounded-2xl overflow-hidden">
