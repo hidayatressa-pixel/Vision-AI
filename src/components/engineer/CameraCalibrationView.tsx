@@ -38,7 +38,6 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
   fps,
   videoDimensions,
   captureFrame,
-  calibrateBackground,
   onSwitchToStandSimulator,
   remotePeerId,
   remoteStatus,
@@ -152,7 +151,6 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
           <select
             value={sourceMode}
             onChange={(e) => setSourceMode(e.target.value as CameraSourceMode)}
-            disabled={sessionActive}
             className="w-full bg-slate-950 text-white font-mono text-xs border border-slate-700 rounded-lg p-2.5 focus:border-cyan-500"
           >
             {CAMERA_SOURCE_OPTIONS.map((option) => (
@@ -170,7 +168,6 @@ export const CameraCalibrationView: React.FC<CameraCalibrationViewProps> = ({
             <select
               value={selectedDeviceId}
               onChange={(e) => setSelectedDeviceId(e.target.value)}
-              disabled={sessionActive}
               className="w-full bg-slate-950 text-white font-mono text-xs border border-slate-700 rounded-lg p-2.5 focus:border-cyan-500"
             >
               {devices.map((d) => (
