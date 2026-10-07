@@ -593,8 +593,8 @@ export function useInspectionPipeline({
 
       presenceDetectorRef.current.markPartInspected();
       isProcessingRef.current = false;
-      }
-    }, [captureFrame, fps]);
+    }
+  }, [captureFrame, fps]);
 
   // Main real-time pipeline tick loop. Presence/inspection sampling follows the operator-configured processing FPS.
   useEffect(() => {
