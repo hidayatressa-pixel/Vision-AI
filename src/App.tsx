@@ -291,11 +291,13 @@ export default function App() {
                   </div>
                   <div className="space-y-1">
                     {masterValidationChecks.map((check) => (
-                      <div key={check.label} className="flex items-center justify-between gap-3 text-[10px] font-mono">
-                        <span className={check.valid ? 'text-slate-400' : 'text-red-300'}>{check.label}</span>
-                        <span className={check.valid ? 'text-emerald-300' : 'text-rose-300'}>{check.valid ? 'PASS' : 'INVALID'}</span>
+                      <div key={check.label} className="space-y-1">
+                        <div className="flex items-center justify-between gap-3 text-[10px] font-mono">
+                          <span className={check.valid ? 'text-slate-400' : 'text-red-300'}>{check.label}</span>
+                          <span className={check.valid ? 'text-emerald-300' : 'text-rose-300'}>{check.valid ? 'PASS' : 'INVALID'}</span>
+                        </div>
+                        {!check.valid && <div className="pl-1 text-[10px] font-mono text-rose-200">→ {check.error}</div>}
                       </div>
-                      {!check.valid && <div className="pl-1 text-[10px] font-mono text-rose-200">→ {check.error}</div>}
                     ))}
                   </div>
                 </div>
