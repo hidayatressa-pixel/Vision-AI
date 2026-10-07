@@ -37,6 +37,7 @@ export interface UseInspectionPipelineProps {
   cameraState: string;
   fps: number;
   processingFps: number;
+  sessionActive: boolean;
 }
 
 export function useInspectionPipeline({
@@ -46,6 +47,7 @@ export function useInspectionPipeline({
   cameraState,
   fps,
   processingFps,
+  sessionActive,
 }: UseInspectionPipelineProps) {
   const [state, setState] = useState<InspectionMachineState>('WAITING_FOR_PART');
   const [stabilizationProgress, setStabilizationProgress] = useState<number>(0);
@@ -151,6 +153,55 @@ export function useInspectionPipeline({
     const regionStats = getRegionStats(gray, rx, ry, rw, rh);
     presenceDetectorRef.current.setBaseline(regionStats);
   }, [captureFrame]);
+
+  // Start a controlled inspection session. Baseline is captured only after
+  // the operator explicitly starts the cycle and the camera is already live.
+  const startSession = useCallback(async () => {
+    if (sessionActive || !activeRevisionRef.current) return false;
+
+    const samples: { mean: number; variance: number }[] = [];
+    const revision = activeRevisionRef.current;
+
+    for (let i = 0; i < 5; i += 1) {
+      const frame = captureFrame();
+      if (frame) {
+        const gray = toGrayscale(frame);
+        const dz = revision.detectionZone;
+        const stats = getRegionStats(
+          gray,
+          dz.x * gray.width,
+          dz.y * gray.height,
+          dz.width * gray.width,
+          dz.height * gray.height
+        );
+        samples.push(stats);
+      }
+      if (i < 4) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 80));
+      }
+    }
+
+    if (samples.length < 3) return false;
+
+    const baseline = {
+      mean: samples.reduce((sum, sample) => sum + sample.mean, 0) / samples.length,
+      variance: samples.reduce((sum, sample) => sum + sample.variance, 0) / samples.length,
+    };
+
+    presenceDetectorRef.current.resetPartState();
+    presenceDetectorRef.current.setBaseline(baseline);
+    setState('WAITING_FOR_PART');
+    setStabilizationProgress(0);
+    setMotionDelta(0);
+    setCurrentResult(null);
+    setLatestAlignment(null);
+    setLatestRoiResults([]);
+    setLatestExtraObjects([]);
+    detectionStartTimeRef.current = 0;
+    cycleStartTimeRef.current = 0;
+    isProcessingRef.current = false;
+    return true;
+  }, [captureFrame, sessionActive]);
 
   // Execute actual inspection on settled frame
   const executeInspection = useCallback(
@@ -617,6 +668,7 @@ export function useInspectionPipeline({
 
   // Main real-time pipeline tick loop. Presence/inspection sampling follows the operator-configured processing FPS.
   useEffect(() => {
+    if (!sessionActive) return;
     if (cameraState === 'error' || cameraState === 'permission_denied') return;
     if (!activeRevision) return;
 
@@ -757,7 +809,7 @@ export function useInspectionPipeline({
     }, Math.max(50, Math.round(1000 / Math.max(1, processingFps))));
 
     return () => clearInterval(interval);
-  }, [activeRevision, cameraState, captureFrame, executeInspection, state, processingFps]);
+  }, [activeRevision, cameraState, captureFrame, executeInspection, state, processingFps, sessionActive]);
 
   return {
     state,
@@ -773,5 +825,6 @@ export function useInspectionPipeline({
     plcSignals,
     resetPipeline,
     calibrateBackground,
+    startSession,
   };
 }
