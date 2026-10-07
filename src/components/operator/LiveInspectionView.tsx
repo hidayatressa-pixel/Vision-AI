@@ -61,6 +61,7 @@ interface LiveInspectionViewProps {
   calibrateBackground: () => void;
   onOpenHistory: () => void;
   onOpenPlcConfig?: () => void;
+  onEndSession?: () => void;
 }
 
 export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
@@ -94,6 +95,7 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
   calibrateBackground,
   onOpenHistory,
   onOpenPlcConfig,
+  onEndSession,
 }) => {
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -324,6 +326,17 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
               </span>
             )}
           </div>
+
+          {onEndSession && (
+            <button
+              type="button"
+              onClick={onEndSession}
+              className="pointer-events-auto px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-amber-500/30 text-[10px] font-mono text-amber-300 hover:bg-amber-500/10"
+              title="End inspection session and return to setup"
+            >
+              END SESSION
+            </button>
+          )}
 
           {role === 'ENGINEER' && (
             <div className="flex items-center gap-2 pointer-events-auto">
