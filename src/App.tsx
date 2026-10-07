@@ -31,7 +31,7 @@ export default function App() {
   if (isPhoneCameraRoute()) {
     return <PhoneCameraView />;
   }
-  const [activeTab, setActiveTab] = useState<ActiveTab>('INSPECTION');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('CAMERA_SETUP');
   const [role] = useState<UserRole>('OPERATOR');
   const [isMuted, setIsMuted] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
@@ -45,11 +45,12 @@ export default function App() {
   const [remotePeerId, setRemotePeerId] = useState('');
   const [remoteStatus, setRemoteStatus] = useState<'idle' | 'starting' | 'waiting' | 'connected' | 'error'>('idle');
   const [processingFps, setProcessingFps] = useState(5);
+  const [sessionActive, setSessionActive] = useState(false);
   const remoteSession = useMemo(() => createRemoteCameraSession(), []);
 
   const cameraOptions = React.useMemo(() => ({ preferredFacingMode: 'environment' as const, preferredResolution: { width: 800, height: 600 } }), []);
   const camera = useCamera({ ...cameraOptions, sourceMode: cameraSourceMode });
-  const pipeline = useInspectionPipeline({ activeMaster, activeRevision, captureFrame: camera.captureFrame, cameraState: camera.cameraState, fps: camera.fps, processingFps });
+  const pipeline = useInspectionPipeline({ activeMaster, activeRevision, captureFrame: camera.captureFrame, cameraState: camera.cameraState, fps: camera.fps, processingFps, sessionActive });
 
   useEffect(() => {
     if (cameraSourceMode !== 'PHONE_REMOTE') {
@@ -139,6 +140,23 @@ export default function App() {
     await dbService.saveMaster(newProduct); await loadMasters(); handleSelectMaster(newProduct, revisionId);
   };
 
+  const handleStartSession = async () => {
+    if (sessionActive || !activeRevision) return;
+    const cameraReady = camera.cameraState === 'streaming' || camera.cameraState === 'virtual_mode';
+    if (!cameraReady) return;
+    const started = await pipeline.startSession();
+    if (started) {
+      setSessionActive(true);
+      setActiveTab('INSPECTION');
+    }
+  };
+
+  const handleEndSession = () => {
+    setSessionActive(false);
+    pipeline.resetPipeline();
+    setActiveTab('CAMERA_SETUP');
+  };
+
   const handleSync = async () => { await dbService.flushSyncQueue(); setPendingSyncCount(await dbService.getPendingSyncCount()); };
   const toggleMute = () => { const next = !isMuted; setIsMuted(next); soundService.setMuted(next); };
 
@@ -146,11 +164,11 @@ export default function App() {
     <div className="min-h-screen rvi-app text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} role={role} setRole={() => undefined} activeMaster={activeMaster} activeRevision={activeRevision} isMuted={isMuted} toggleMute={toggleMute} pendingSyncCount={pendingSyncCount} onSync={handleSync} />
       <main className="rvi-main flex-1 max-w-[1500px] w-full mx-auto p-3 sm:p-5 lg:p-6">
-        {activeTab === 'INSPECTION' && <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} processingFps={processingFps} setProcessingFps={setProcessingFps} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} calibrateBackground={pipeline.calibrateBackground} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => setActiveTab('SETTINGS')} />}
+        {activeTab === 'INSPECTION' && <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} processingFps={processingFps} setProcessingFps={setProcessingFps} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} calibrateBackground={pipeline.calibrateBackground} sessionActive={sessionActive} onStartSession={handleStartSession} onEndSession={handleEndSession} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => setActiveTab('SETTINGS')} />}
         {activeTab === 'HISTORY' && <InspectionHistoryView onRefreshStats={loadMasters} />}
         {activeTab === 'SETTINGS' && <SettingsView onNavigate={setActiveTab} onClose={() => setActiveTab('INSPECTION')} />}
         {activeTab === 'MASTERS' && <MasterManager masters={masters} activeMaster={activeMaster} activeRevision={activeRevision} onSelectMaster={handleSelectMaster} onRefreshMasters={loadMasters} onOpenSetupModal={handleOpenSetupModal} onCreateNewMaster={handleCreateNewMaster} />}
-        {activeTab === 'CAMERA_SETUP' && <CameraCalibrationView devices={camera.devices} selectedDeviceId={camera.selectedDeviceId} setSelectedDeviceId={camera.setSelectedDeviceId} sourceMode={cameraSourceMode} setSourceMode={setCameraSourceMode} cameraState={camera.cameraState} remotePeerId={remotePeerId} remoteStatus={remoteStatus} phoneCameraUrl={phoneCameraUrl} videoRef={camera.videoRef} fps={camera.fps} videoDimensions={camera.videoDimensions} captureFrame={camera.captureFrame} calibrateBackground={pipeline.calibrateBackground} onSwitchToStandSimulator={() => camera.enableVirtualMode('PERFECT_PASS')} />}
+        {activeTab === 'CAMERA_SETUP' && <CameraCalibrationView devices={camera.devices} selectedDeviceId={camera.selectedDeviceId} setSelectedDeviceId={camera.setSelectedDeviceId} sourceMode={cameraSourceMode} setSourceMode={setCameraSourceMode} cameraState={camera.cameraState} remotePeerId={remotePeerId} remoteStatus={remoteStatus} phoneCameraUrl={phoneCameraUrl} videoRef={camera.videoRef} fps={camera.fps} videoDimensions={camera.videoDimensions} captureFrame={camera.captureFrame} calibrateBackground={pipeline.calibrateBackground} sessionActive={sessionActive} onStartSession={handleStartSession} onEndSession={handleEndSession} onSwitchToStandSimulator={() => camera.enableVirtualMode('PERFECT_PASS')} />}
         {activeTab === 'PLC_SETUP' && <PLCConfigurationView />}
         {activeTab === 'DIAGNOSTICS' && <DiagnosticsModal metrics={pipeline.liveMetrics} />}
       </main>
