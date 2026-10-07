@@ -49,6 +49,7 @@ export default function App() {
   const [sessionActive, setSessionActive] = useState(false);
   const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [setupValidated, setSetupValidated] = useState(false);
+  const [setupValidationAttempted, setSetupValidationAttempted] = useState(false);
   const remoteSession = useMemo(() => createRemoteCameraSession(), []);
 
   const cameraOptions = React.useMemo(() => ({ preferredFacingMode: 'environment' as const, preferredResolution: { width: 800, height: 600 } }), []);
@@ -169,21 +170,39 @@ export default function App() {
   };
 
   const handleNextMasterSetup = () => {
-    if (!masterReady) return;
+    // Step 3 is the validation center. Do not block the user here just
+    // because the master is incomplete; let the validation center explain
+    // exactly what is INVALID and how to fix it.
+    if (!activeMaster || !activeRevision) return;
     setSetupStep(3);
     setSetupValidated(false);
+    setSetupValidationAttempted(false);
     setActiveTab('MASTERS');
   };
 
   const handleSaveConfiguration = () => {
-    if (!cameraReady || !masterReady) return;
+    setSetupValidationAttempted(true);
+
+    if (!cameraReady || !activeMaster || !activeRevision) {
+      setSetupValidated(false);
+      return;
+    }
+
+    const invalidChecks = getMasterValidationChecks(activeRevision).filter((check) => !check.valid);
+    if (invalidChecks.length > 0) {
+      setSetupValidated(false);
+      return;
+    }
+
     setSetupValidated(true);
+    setSetupValidationAttempted(false);
     setSetupStep(4);
   };
 
   const handleBackToMasterSetup = () => {
     if (sessionActive) return;
     setSetupValidated(false);
+    setSetupValidationAttempted(false);
     setSetupStep(2);
     setActiveTab('MASTERS');
   };
@@ -252,7 +271,7 @@ export default function App() {
             <div className="rounded-2xl border border-cyan-500/30 bg-slate-950 p-5">
               <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-400">Setup 03 / 05</div>
               <h1 className="mt-1 text-xl font-bold text-white">SAVE CONFIGURATION + VALIDATE SETUP</h1>
-              <p className="mt-1 text-xs font-mono text-slate-500">All required station configuration must pass before the operation screen is unlocked.</p>
+              <p className="mt-1 text-xs font-mono text-slate-500">Validation Center — every required item is shown explicitly as PASS or INVALID before operation is unlocked.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -274,21 +293,39 @@ export default function App() {
                     {masterValidationChecks.map((check) => (
                       <div key={check.label} className="flex items-center justify-between gap-3 text-[10px] font-mono">
                         <span className={check.valid ? 'text-slate-400' : 'text-red-300'}>{check.label}</span>
-                        <span className={check.valid ? 'text-emerald-300' : 'text-red-300'}>{check.valid ? 'PASS' : check.detail}</span>
+                        <span className={check.valid ? 'text-emerald-300' : 'text-rose-300'}>{check.valid ? 'PASS' : 'INVALID'}</span>
                       </div>
+                      {!check.valid && <div className="pl-1 text-[10px] font-mono text-rose-200">→ {check.error}</div>}
                     ))}
                   </div>
                 </div>
               </div>
             </div>
 
+            {setupValidationAttempted && (!cameraReady || !masterReady) && (
+              <div className="rounded-2xl border border-rose-500/40 bg-rose-950/20 p-4">
+                <div className="text-sm font-black text-rose-200">SETUP VALIDATION — INVALID</div>
+                <div className="mt-1 text-xs text-rose-200/80">
+                  {[
+                    !cameraReady ? 'Camera is NOT READY.' : null,
+                    !activeMaster ? 'No master part is selected.' : null,
+                    ...masterValidationChecks.filter((check) => !check.valid).map((check) => check.label + ': ' + check.error),
+                  ].filter(Boolean).map((message, index) => (
+                    <div key={String(message) + index} className="mt-1">• {message}</div>
+                  ))}
+                </div>
+                <button type="button" onClick={handleBackToMasterSetup} className="mt-3 px-4 py-2 rounded-xl border border-rose-500/30 bg-rose-950/30 text-rose-200 text-xs font-bold hover:bg-rose-950/50">
+                  FIX MASTER CONFIGURATION
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
               <button type="button" onClick={handleBackToMasterSetup} className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-950 text-slate-300 text-xs font-bold hover:text-white">← BACK: MASTER PART</button>
               <button
                 type="button"
                 onClick={handleSaveConfiguration}
-                disabled={!cameraReady || !masterReady}
-                className="px-5 py-2.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-400"
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black hover:bg-emerald-400"
               >
                 SAVE CONFIGURATION + VALIDATE
               </button>
