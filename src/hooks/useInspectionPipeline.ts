@@ -733,7 +733,7 @@ export function useInspectionPipeline({
       requestAnimationFrame(() => {
         executeInspection(frameData, partDetectDuration, stabDuration);
       });
-    }, Math.max(50, Math.round(1000 / Math.max(1, processingFps)));
+    }, Math.max(50, Math.round(1000 / Math.max(1, processingFps))));
 
     return () => clearInterval(interval);
   }, [activeRevision, cameraState, captureFrame, executeInspection, state, processingFps]);
