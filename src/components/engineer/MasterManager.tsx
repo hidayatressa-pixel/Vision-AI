@@ -95,7 +95,7 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
           <button
             type="button"
             onClick={onContinueSetup}
-            disabled={!activeMasterReady}
+            disabled={!activeMaster}
             className="px-5 py-2.5 rounded-xl bg-cyan-500 text-slate-950 text-xs font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-cyan-400"
           >
             NEXT: VALIDATE SETUP →
@@ -222,6 +222,20 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
                   </div>
                 </div>
               )}
+
+              <div className="mb-4 rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-mono uppercase tracking-wider text-slate-400">Current master configuration</span>
+                  <span className={activeMasterReady ? 'text-emerald-300 text-[10px] font-black' : 'text-rose-300 text-[10px] font-black'}>
+                    {activeMasterReady ? 'VALID' : 'INVALID'}
+                  </span>
+                </div>
+                <div className="mt-2 text-[10px] font-mono text-slate-500">
+                  {activeMasterChecks.filter((check) => !check.valid).length === 0
+                    ? 'All validation checks are currently PASS.'
+                    : activeMasterChecks.filter((check) => !check.valid).length + ' validation item(s) will be shown in the Validation Center.'}
+                </div>
+              </div>
 
               <div className="flex items-start justify-between mb-4">
                 <div>
