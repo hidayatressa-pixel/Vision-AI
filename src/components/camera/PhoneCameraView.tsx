@@ -20,7 +20,7 @@ export const PhoneCameraView: React.FC = () => {
     const step = capabilities.zoom.step || 0.1;
     const value = Math.min(max, Math.max(min, Math.round(nextZoom / step) * step));
     try {
-      await track.applyConstraints({ advanced: [{ zoom: value }] });
+      await track.applyConstraints({ advanced: [{ zoom: value } as MediaTrackConstraintSet & { zoom: number }] });
       setZoom(value);
     } catch (error) {
       console.warn('Camera zoom constraint rejected:', error);
