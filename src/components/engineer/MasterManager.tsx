@@ -116,7 +116,11 @@ export const MasterManager: React.FC<MasterManagerProps> = ({
               return (
                 <div
                   key={m.id}
-                  onClick={() => setSelectedMasterId(m.id)}
+                  onClick={() => {
+                    setSelectedMasterId(m.id);
+                    const revision = m.revisions.find((r) => r.id === m.activeRevisionId) || m.revisions[0];
+                    if (revision) onSelectMaster(m, revision.id);
+                  }}
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
                     isSelected
                       ? 'bg-slate-800/90 border-cyan-500/80 shadow-md'
