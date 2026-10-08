@@ -113,7 +113,7 @@ export default function App() {
     // Do not allow master/revision changes during an active inspection cycle.
     // This keeps the selected configuration aligned with the physical part
     // and prevents an operator action from bypassing the inspection latch.
-    if (pipeline.state !== 'WAITING_FOR_PART') {
+    if (sessionActive || pipeline.state !== 'WAITING_FOR_PART') {
       return;
     }
 
@@ -124,10 +124,12 @@ export default function App() {
   };
 
   const handleOpenSetupModal = (master: MasterProduct, revision: MasterRevision) => {
+    if (sessionActive) return;
     setSetupMaster(master); setSetupRevision(revision); setIsSetupModalOpen(true);
   };
 
   const handleCreateNewMaster = async () => {
+    if (sessionActive) return;
     const newIdx = masters.length + 1;
     const now = new Date().toISOString();
     const productId = `prd-${newIdx}-${Date.now()}`;
@@ -152,7 +154,7 @@ export default function App() {
     // Initial setup behaves like an authentication gate. Until setup is
     // validated, navigation cannot bypass the required sequence.
     if (setupStep < 5) return;
-    if (sessionActive && tab === 'SETTINGS') return;
+    if (sessionActive && tab !== 'INSPECTION' && tab !== 'HISTORY') return;
     setActiveTab(tab);
   };
 
@@ -218,10 +220,12 @@ export default function App() {
   };
 
   const handleEndSession = () => {
+    const reset = pipeline.resetPipeline();
+    if (!reset) return;
     setSessionActive(false);
     setSetupValidated(false);
+    setSetupValidationAttempted(false);
     setSetupStep(1);
-    pipeline.resetPipeline();
     setActiveTab('CAMERA_SETUP');
   };
 
@@ -359,7 +363,7 @@ export default function App() {
         )}
 
         {setupStep === 5 && activeTab === 'INSPECTION' && (
-          <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} processingFps={processingFps} setProcessingFps={setProcessingFps} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} calibrateBackground={pipeline.calibrateBackground} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => handleNavigate('SETTINGS')} onEndSession={handleEndSession} />)}
+          <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} processingFps={processingFps} setProcessingFps={setProcessingFps} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => handleNavigate('SETTINGS')} onEndSession={handleEndSession} />)}
         {setupStep === 5 && activeTab === 'HISTORY' && <InspectionHistoryView onRefreshStats={loadMasters} />}
         {setupStep === 5 && activeTab === 'SETTINGS' && <SettingsView onNavigate={handleNavigate} onClose={() => setActiveTab('INSPECTION')} />}
         {setupStep === 5 && activeTab === 'MASTERS' && <MasterManager masters={masters} activeMaster={activeMaster} activeRevision={activeRevision} onSelectMaster={handleSelectMaster} onRefreshMasters={loadMasters} onOpenSetupModal={handleOpenSetupModal} onCreateNewMaster={handleCreateNewMaster} onBackSetup={handleBackToCameraSetup} onContinueSetup={handleNextMasterSetup} />}
