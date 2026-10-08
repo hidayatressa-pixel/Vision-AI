@@ -58,7 +58,6 @@ interface LiveInspectionViewProps {
   setVirtualScenario: (s: TestScenarioType) => void;
   enableVirtualMode: (s: TestScenarioType) => void;
   enablePhysicalCamera: () => void;
-  calibrateBackground: () => void;
   onOpenHistory: () => void;
   onOpenPlcConfig?: () => void;
   onEndSession?: () => void;
@@ -92,7 +91,6 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
   setVirtualScenario,
   enableVirtualMode,
   enablePhysicalCamera,
-  calibrateBackground,
   onOpenHistory,
   onOpenPlcConfig,
   onEndSession,
@@ -331,8 +329,9 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
             <button
               type="button"
               onClick={onEndSession}
-              className="pointer-events-auto px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-amber-500/30 text-[10px] font-mono text-amber-300 hover:bg-amber-500/10"
-              title="End inspection session and return to setup"
+              disabled={state !== 'WAITING_FOR_PART'}
+              className="pointer-events-auto px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-amber-500/30 text-[10px] font-mono text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+              title={state === 'WAITING_FOR_PART' ? 'End inspection session and return to setup' : 'Remove the inspected part before ending the session'}
             >
               END SESSION
             </button>
@@ -486,15 +485,6 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={calibrateBackground}
-              title="Calibrate empty background baseline for this lighting"
-              className="px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-mono text-[11px]"
-            >
-              Zero Calibration
-            </button>
-          </div>
           </div>
         )}
       </div>
