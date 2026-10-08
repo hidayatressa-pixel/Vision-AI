@@ -344,13 +344,13 @@ export default function App() {
             <div className="rounded-2xl border border-emerald-500/30 bg-slate-950 p-6 text-center">
               <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-emerald-400">Setup 04 / 05</div>
               <h1 className="mt-2 text-2xl font-black text-white">SETUP VALIDATED ✓</h1>
-              <p className="mt-2 text-xs font-mono text-slate-400">Camera and master configuration are locked for this operation session.</p>
+              <p className="mt-2 text-xs font-mono text-slate-400">All prerequisites are valid. Configuration will lock only after START begins the operation session.</p>
             </div>
             <div className="mx-auto max-w-2xl rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                 <div className="rounded-xl bg-slate-950 p-4"><div className="text-[10px] font-mono text-slate-500">CAMERA</div><div className="mt-1 font-bold text-emerald-300">READY</div></div>
                 <div className="rounded-xl bg-slate-950 p-4"><div className="text-[10px] font-mono text-slate-500">MASTER</div><div className="mt-1 font-bold text-emerald-300">VALID</div></div>
-                <div className="rounded-xl bg-slate-950 p-4"><div className="text-[10px] font-mono text-slate-500">CONFIG</div><div className="mt-1 font-bold text-emerald-300">LOCKED</div></div>
+                <div className="rounded-xl bg-slate-950 p-4"><div className="text-[10px] font-mono text-slate-500">CONFIG</div><div className="mt-1 font-bold text-cyan-300">READY</div></div>
               </div>
               <button type="button" onClick={handleStartSession} className="w-full rounded-2xl bg-emerald-500 py-4 text-sm font-black text-slate-950 hover:bg-emerald-400">
                 START
