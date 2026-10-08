@@ -220,8 +220,8 @@ export default function App() {
   };
 
   const handleEndSession = () => {
-    const reset = pipeline.resetPipeline();
-    if (!reset) return;
+    if (pipeline.state !== 'WAITING_FOR_PART') return;
+    pipeline.resetPipeline();
     setSessionActive(false);
     setSetupValidated(false);
     setSetupValidationAttempted(false);
