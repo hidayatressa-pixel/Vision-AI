@@ -20,7 +20,7 @@ Resources:
     Type: AWS::Serverless::Function
     Metadata:
       Dockerfile: Dockerfile
-      DockerContext: ./vision-analyzer
+      DockerContext: .
       DockerTag: opencv5
     Properties:
       PackageType: Image
