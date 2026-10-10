@@ -1,90 +1,44 @@
-# Vision-AI AWS Hackathon
+# Vision-AI AWS — OpenCV 5 Evidence Analyzer
 
-AWS/OpenCV 5 verification implementation for the Vision-AI project.
-
-This repository contains the **hackathon AWS implementation**. It is intentionally separate from the production repository `Vision-Ai-Prod`, which is maintained independently.
+AWS-focused verification implementation for the Vision-AI project. This repository contains the AWS analyzer, infrastructure definition, tests, and submission evidence documentation. The production frontend and inspection application are maintained separately in [Vision-Ai-Prod](https://github.com/hidayatressa-pixel/Vision-Ai-Prod); their source is not copied into this repository.
 
 ## Purpose
 
-The AWS version demonstrates that Vision-AI can execute a meaningful image-analysis stage inside AWS using **OpenCV 5**.
+Demonstrate meaningful server-side image analysis using **OpenCV 5 inside an AWS Lambda container**, with two supported input paths:
 
-The AWS component is an evidence/verification analyzer, not a replacement for the full production inspection station.
+- API Gateway: `POST /analyze` accepts a JSON body containing `image_base64`.
+- Amazon S3: uploaded images under `incoming/` trigger analysis; structured JSON results are written under `results/`.
 
-## Demonstrated architecture
+This analyzer is an evidence/verification component, not the production inspection authority. A passing CI build is not proof of a live AWS deployment.
 
-```text
-Image
-  |
-  +--> API Gateway /analyze
-  |          |
-  |          v
-  |       Lambda
-  |          |
-  |          v
-  |       OpenCV 5
-  |          |
-  |          v
-  |       Analysis JSON
-  |
-  +--> S3 incoming/
-             |
-             v
-          Lambda
-             |
-             v
-          OpenCV 5
-             |
-             v
-        S3 results/*.json
-```
+## OpenCV processing
 
-### Processing performed by OpenCV 5
+The analyzer decodes the image, converts it to grayscale, applies Gaussian blur, extracts Canny edges, generates circular candidates using Hough Circles, and reports image dimensions, edge density, OpenCV version, and processing time.
 
-The Lambda analyzer performs substantive server-side image processing:
-
-1. Decode the image with `cv2.imdecode`
-2. Convert BGR to grayscale
-3. Apply Gaussian blur
-4. Extract edges with Canny
-5. Detect circular candidates with Hough Circles
-6. Calculate edge density
-7. Return dimensions, OpenCV version, candidates, and processing time
-
-The dependency is pinned to:
+Pinned dependency:
 
 ```text
 opencv-python-headless==5.0.0.93
 ```
 
-The CI pipeline builds the Lambda container and explicitly verifies that the container imports OpenCV 5.
-
 ## AWS components
 
-The SAM template provisions:
+The AWS SAM template defines:
 
-- **AWS Lambda** — containerized analyzer.
-- **Amazon S3** — evidence images under `incoming/` and JSON results under `results/`.
-- **API Gateway** — `POST /analyze` demonstration endpoint.
-- **IAM policies** — S3 read/write permissions required by the analyzer.
-- **Lambda container** — AWS Lambda Python 3.12 base image.
+- **AWS Lambda** — containerized Python image analyzer.
+- **Amazon S3** — incoming evidence images and JSON analysis results.
+- **API Gateway** — HTTP demonstration route `POST /analyze`.
+- **IAM policies** — scoped S3 read/write permissions for the analyzer.
 
-The S3 event is filtered to `incoming/`, while results are written to `results/`. This keeps generated result objects outside the trigger prefix and avoids recursive invocation.
+The S3 notification only watches the `incoming/` prefix. Output is stored under `results/` to prevent result objects from recursively triggering analysis.
 
-## Repository separation
+## Repository scope
 
-This repository is the **AWS/hackathon side**.
-
-The production application is maintained separately in **Vision-Ai-Prod**.
-
-The two repositories may share core inspection concepts and vision algorithms, but deployment responsibilities are intentionally separated. This AWS repository is the place for Lambda, S3, API Gateway, SAM, Docker, and AWS-specific verification.
+This repository is intentionally AWS-only. It does not host or build the production React application, and it does not deploy a frontend to GitHub Pages. Production inspection logic and its UI remain in the separate [Vision-Ai-Prod repository](https://github.com/hidayatressa-pixel/Vision-Ai-Prod).
 
 ## Local verification
 
-Requirements:
-
-- Python 3.12
-- Docker
-- AWS SAM CLI for deployment
+Requirements: Python 3.12, Docker, and (for infrastructure validation/deployment) AWS SAM CLI.
 
 Install dependencies:
 
@@ -93,71 +47,53 @@ python -m pip install -r aws/vision-analyzer/requirements.txt
 python -m pip install pytest
 ```
 
-Run tests:
+Run all analyzer tests, including the mocked S3 event path:
 
 ```bash
-pytest -q aws/vision-analyzer/test_app.py
+pytest -q aws/vision-analyzer/test_app.py tests/test_s3_path.py
 ```
 
-Build the Lambda container:
+Validate the SAM template:
+
+```bash
+sam validate --lint --template-file aws/vision-analyzer/template.yaml
+```
+
+Build the Lambda container and verify its OpenCV major version:
 
 ```bash
 docker build -t vision-ai-aws-opencv5 aws/vision-analyzer
-```
-
-Verify OpenCV 5 inside the container:
-
-```bash
 docker run --rm --entrypoint python vision-ai-aws-opencv5 -c "import cv2; print(cv2.__version__); assert cv2.__version__.startswith('5.')"
 ```
 
 ## AWS deployment
 
-Infrastructure is defined in:
-
-```text
-aws/vision-analyzer/template.yaml
-```
-
-After configuring AWS credentials for the target account:
+Infrastructure is defined in `aws/vision-analyzer/template.yaml`. After reviewing AWS account, region, permissions, and cost implications:
 
 ```bash
 sam build --template-file aws/vision-analyzer/template.yaml
 sam deploy --guided
 ```
 
-The deployment creates an S3 evidence bucket, Lambda container function, and API endpoint.
+Deployment creates AWS resources and may incur charges. No live endpoint or end-to-end AWS execution should be claimed until the stack has actually been deployed and tested.
 
-**Cost note:** running the repository locally does not deploy AWS resources. AWS charges can only come from AWS resources/services actually deployed or used in the account. Review the account billing/free-tier status before deploying.
+## Continuous integration
 
-## CI verification
+The `aws-opencv5` GitHub Actions job installs dependencies, runs the API analyzer tests, runs the mocked S3 event test, builds the Lambda container, and verifies OpenCV 5 inside that container. CI does not deploy AWS resources.
 
-The `aws-opencv5` GitHub Actions job:
+## Evidence status
 
-1. Installs the AWS analyzer dependencies.
-2. Runs `test_app.py`.
-3. Builds the Lambda Docker image.
-4. Imports OpenCV inside the built Lambda image.
-5. Fails unless the OpenCV major version is 5.
-
-The normal build job also runs frontend lint, the adversarial recognizer audit, and the production build.
-
-CI proves the implementation and container build; it does **not** by itself prove a live AWS deployment.
-
-## Hackathon evidence status
-
-- [x] OpenCV 5 dependency and runtime proof
-- [x] Meaningful OpenCV image processing
-- [x] AWS Lambda component
-- [x] S3 event-driven processing path
-- [x] API Gateway demonstration path
-- [x] Automated OpenCV 5 tests
+- [x] OpenCV 5 dependency and container runtime verification in CI
+- [x] Meaningful image-analysis pipeline
+- [x] AWS SAM infrastructure definition
+- [x] API Gateway request-path tests
+- [x] Mocked S3 event processing and JSON result tests
 - [x] Lambda container build in CI
-- [x] Adversarial recognizer audit in CI
-- [ ] Live AWS deployment and end-to-end execution evidence
-- [ ] Final screenshot/log/API evidence for the submitted demo
+- [ ] Live AWS deployment evidence
+- [ ] End-to-end request and S3 result evidence from a deployed stack
+- [ ] Final demonstration recording and submission form
 
-The last two items remain intentionally unchecked until the actual AWS deployment is executed and verified.
+Unchecked items must remain unchecked until the evidence is actually captured.
 
 ## Project structure
 
@@ -168,9 +104,8 @@ aws/vision-analyzer/
 ├── requirements.txt
 ├── template.yaml
 └── test_app.py
-
 .github/workflows/ci.yml
+docs/
+tests/
 README.md
 ```
-
-Keep AWS-specific implementation, deployment configuration, and evidence tooling on the AWS side.
