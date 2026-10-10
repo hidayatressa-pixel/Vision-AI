@@ -50,7 +50,7 @@ def test_s3_event_analyzes_and_saves_result(monkeypatch):
     assert response["results"][0]["source"] == "s3"
     assert response["results"][0]["key"] == "incoming/photo sample.png"
     assert response["results"][0]["result_key"] == (
-        "results/photo sample.png.json"
+        "results/incoming/photo sample.png.json"
     )
 
     assert len(fake_s3.put_calls) == 1
