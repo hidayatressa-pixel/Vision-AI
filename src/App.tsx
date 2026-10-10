@@ -22,6 +22,7 @@ import { CameraSourceMode } from './types/device';
 import { createRemoteCameraSession } from './services/remoteCamera';
 import { PhoneCameraView } from './components/camera/PhoneCameraView';
 import { getMasterValidationChecks } from './services/setupValidation';
+import { LockKeyhole, ScanLine, ShieldCheck } from 'lucide-react';
 
 function isPhoneCameraRoute() {
   const params = new URLSearchParams(window.location.search);
@@ -32,6 +33,9 @@ export default function App() {
   if (isPhoneCameraRoute()) {
     return <PhoneCameraView />;
   }
+  const [entryScreen, setEntryScreen] = useState<'welcome' | 'pin' | 'app'>(() => sessionStorage.getItem('vision-ai-engineering-unlocked') === '1' ? 'app' : 'welcome');
+  const [entryPin, setEntryPin] = useState('');
+  const [entryPinError, setEntryPinError] = useState('');
   const [activeTab, setActiveTab] = useState<ActiveTab>('CAMERA_SETUP');
   const [role] = useState<UserRole>('OPERATOR');
   const [isMuted, setIsMuted] = useState(false);
@@ -146,7 +150,9 @@ export default function App() {
     await dbService.saveMaster(newProduct); await loadMasters(); handleSelectMaster(newProduct, revisionId);
   };
 
-  const cameraReady = camera.cameraState === 'streaming' || camera.cameraState === 'virtual_mode';
+  // Production inspection requires a verified physical or remote camera stream.
+  // The virtual simulator is useful for demos but must not satisfy device readiness.
+  const cameraReady = camera.cameraState === 'streaming';
   const masterValidationChecks = activeRevision ? getMasterValidationChecks(activeRevision) : [];
   const masterReady = Boolean(activeMaster && activeRevision) && masterValidationChecks.every((check) => check.valid);
 
@@ -229,12 +235,79 @@ export default function App() {
     setActiveTab('CAMERA_SETUP');
   };
 
+  const handlePinUnlock = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const configuredPin = String(import.meta.env.VITE_ENGINEERING_PIN ?? '').trim();
+    if (!configuredPin) {
+      setEntryPinError('Engineering PIN belum dikonfigurasi. Set VITE_ENGINEERING_PIN pada environment build.');
+      setEntryPin('');
+      return;
+    }
+    if (entryPin !== configuredPin) {
+      setEntryPinError('PIN tidak sesuai. Silakan coba lagi.');
+      setEntryPin('');
+      return;
+    }
+    sessionStorage.setItem('vision-ai-engineering-unlocked', '1');
+    setEntryPin('');
+    setEntryPinError('');
+    setEntryScreen('app');
+  };
+
+  const handleEntryLock = () => {
+    if (sessionActive) return;
+    sessionStorage.removeItem('vision-ai-engineering-unlocked');
+    setEntryScreen('welcome');
+  };
+
   const handleSync = async () => { await dbService.flushSyncQueue(); setPendingSyncCount(await dbService.getPendingSyncCount()); };
   const toggleMute = () => { const next = !isMuted; setIsMuted(next); soundService.setMuted(next); };
+
+  if (entryScreen !== 'app') {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="pointer-events-none absolute -top-32 -left-24 h-96 w-96 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-blue-600/10 blur-3xl" />
+        <section className="relative w-full max-w-xl rounded-3xl border border-slate-800 bg-slate-900/90 p-7 sm:p-10 shadow-2xl">
+          <div className="flex items-center gap-3 mb-10">
+            <div className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-cyan-300"><ScanLine size={28} /></div>
+            <div><div className="text-xs font-mono tracking-[0.25em] text-cyan-300">INTELLIGENT VISUAL INSPECTION</div><div className="text-lg font-black tracking-wide">VISION-AI AWS</div></div>
+          </div>
+          {entryScreen === 'welcome' ? (
+            <div className="text-center">
+              <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl border border-cyan-400/30 bg-cyan-400/10 text-cyan-300"><ShieldCheck size={42} strokeWidth={1.5} /></div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-500">Inspection station</div>
+              <h1 className="mt-3 text-3xl sm:text-4xl font-black tracking-tight text-white">Precision in every inspection.</h1>
+              <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-400">Quality in every part. Complete the protected setup and verify every prerequisite before starting an inspection session.</p>
+              <div className="my-8 grid grid-cols-3 gap-2 text-left">
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="text-[10px] text-slate-500">01</div><div className="mt-1 text-xs font-bold">Camera</div></div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="text-[10px] text-slate-500">02</div><div className="mt-1 text-xs font-bold">Master + 8 refs</div></div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="text-[10px] text-slate-500">03</div><div className="mt-1 text-xs font-bold">ROI alignment</div></div>
+              </div>
+              <button onClick={() => setEntryScreen('pin')} className="w-full rounded-xl bg-cyan-400 px-5 py-4 text-sm font-black text-slate-950 transition hover:bg-cyan-300">BEGIN INITIAL SETUP <span aria-hidden="true">→</span></button>
+              <p className="mt-4 text-[10px] font-mono text-slate-600">ENGINEERING ACCESS REQUIRED</p>
+            </div>
+          ) : (
+            <form onSubmit={handlePinUnlock} className="mx-auto max-w-sm">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-400/30 bg-amber-400/10 text-amber-300"><LockKeyhole size={32} /></div>
+              <h1 className="text-center text-2xl font-black">Engineering PIN</h1>
+              <p className="mt-2 text-center text-sm text-slate-400">Masukkan PIN sebelum membuka konfigurasi kamera dan master inspeksi.</p>
+              <label className="mt-7 block text-xs font-bold uppercase tracking-wider text-slate-400" htmlFor="engineering-pin">PIN</label>
+              <input id="engineering-pin" autoFocus inputMode="numeric" type="password" autoComplete="current-password" value={entryPin} onChange={(event) => { setEntryPin(event.target.value); setEntryPinError(''); }} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-4 text-center text-xl tracking-[0.5em] text-white outline-none focus:border-cyan-400" placeholder="••••••" required />
+              {entryPinError && <p role="alert" className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">{entryPinError}</p>}
+              <button type="submit" className="mt-5 w-full rounded-xl bg-cyan-400 px-5 py-4 text-sm font-black text-slate-950 hover:bg-cyan-300">UNLOCK SETUP</button>
+              <button type="button" onClick={() => { setEntryPin(''); setEntryPinError(''); setEntryScreen('welcome'); }} className="mt-3 w-full rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-400 hover:text-white">Back</button>
+            </form>
+          )}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen rvi-app text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
       <Navbar activeTab={activeTab} setActiveTab={handleNavigate} role={role} setRole={() => undefined} activeMaster={activeMaster} activeRevision={activeRevision} isMuted={isMuted} toggleMute={toggleMute} pendingSyncCount={pendingSyncCount} onSync={handleSync} />
+      {!sessionActive && <div className="mx-auto flex w-full max-w-[1500px] justify-end px-3 pt-2"><button type="button" onClick={handleEntryLock} className="rounded-lg border border-slate-800 px-3 py-1.5 text-[10px] font-mono text-slate-500 hover:border-amber-400/40 hover:text-amber-300">LOCK ENGINEERING ACCESS</button></div>}
       <main className="rvi-main flex-1 max-w-[1500px] w-full mx-auto p-3 sm:p-5 lg:p-6">
         {setupStep === 1 && (
           <CameraCalibrationView
