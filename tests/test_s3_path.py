@@ -56,7 +56,7 @@ def test_s3_event_analyzes_and_saves_result(monkeypatch):
     assert len(fake_s3.put_calls) == 1
     saved = fake_s3.put_calls[0]
     assert saved["Bucket"] == "test-bucket"
-    assert saved["Key"] == "results/photo sample.png.json"
+    assert saved["Key"] == "results/incoming/photo sample.png.json"
     assert saved["ContentType"] == "application/json"
 
     saved_json = json.loads(saved["Body"].decode("utf-8"))
