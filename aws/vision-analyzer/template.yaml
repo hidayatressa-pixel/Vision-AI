@@ -12,10 +12,46 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "vision-ai-evidence-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+
+  EvidenceBucketEnforceTLS:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EvidenceBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt EvidenceBucket.Arn
+              - !Sub "${EvidenceBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  VisionAnalyzerApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 5
+          ThrottlingBurstLimit: 10
 
   VisionAnalyzerFunction:
     Type: AWS::Serverless::Function
@@ -25,6 +61,7 @@ Resources:
       DockerTag: opencv5
     Properties:
       PackageType: Image
+      ReservedConcurrentExecutions: 5
       Environment:
         Variables:
           OUTPUT_PREFIX: results/
@@ -47,6 +84,7 @@ Resources:
         DemoApi:
           Type: Api
           Properties:
+            RestApiId: !Ref VisionAnalyzerApi
             Path: /analyze
             Method: post
 
@@ -54,4 +92,4 @@ Outputs:
   EvidenceBucketName:
     Value: !Ref EvidenceBucket
   VisionAnalyzerApi:
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/analyze"
+    Value: !Sub "https://${VisionAnalyzerApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/analyze"

@@ -1,3 +1,4 @@
+```yaml
 name: Vision-AI AWS CI
 
 on:
@@ -22,12 +23,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Install frontend dependencies
         run: npm install
+
       - name: Build frontend
         run: npm run build
 
@@ -56,3 +60,4 @@ jobs:
       - name: Prove Lambda container uses OpenCV 5
         run: |
           docker run --rm --entrypoint python vision-ai-aws-opencv5 -c "import cv2; print(cv2.__version__); assert cv2.__version__.startswith('5.')"
+```
