@@ -51,6 +51,7 @@ export default function App() {
   const [remoteStatus, setRemoteStatus] = useState<'idle' | 'starting' | 'waiting' | 'connected' | 'error'>('idle');
   const [processingFps, setProcessingFps] = useState(5);
   const [sessionActive, setSessionActive] = useState(false);
+  const [sessionRecoveryRequired, setSessionRecoveryRequired] = useState(() => localStorage.getItem('vision-ai-session-active') === '1');
   const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [setupValidated, setSetupValidated] = useState(false);
   const [setupValidationAttempted, setSetupValidationAttempted] = useState(false);
@@ -159,6 +160,7 @@ export default function App() {
   const handleNavigate = (tab: ActiveTab) => {
     // Initial setup behaves like an authentication gate. Until setup is
     // validated, navigation cannot bypass the required sequence.
+    if (sessionRecoveryRequired && tab !== 'INSPECTION' && tab !== 'HISTORY') return;
     if (setupStep < 5) return;
     if (sessionActive && tab !== 'INSPECTION' && tab !== 'HISTORY') return;
     setActiveTab(tab);
@@ -220,6 +222,7 @@ export default function App() {
     const started = await pipeline.startSession();
     if (started) {
       setSessionActive(true);
+      localStorage.setItem('vision-ai-session-active', '1');
       setSetupStep(5);
       setActiveTab('INSPECTION');
     }
@@ -229,6 +232,8 @@ export default function App() {
     if (pipeline.state !== 'WAITING_FOR_PART') return;
     pipeline.resetPipeline();
     setSessionActive(false);
+    localStorage.removeItem('vision-ai-session-active');
+    setSessionRecoveryRequired(false);
     setSetupValidated(false);
     setSetupValidationAttempted(false);
     setSetupStep(1);
@@ -262,6 +267,26 @@ export default function App() {
 
   const handleSync = async () => { await dbService.flushSyncQueue(); setPendingSyncCount(await dbService.getPendingSyncCount()); };
   const toggleMute = () => { const next = !isMuted; setIsMuted(next); soundService.setMuted(next); };
+
+  if (entryScreen === 'app' && sessionRecoveryRequired) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <section className="w-full max-w-xl rounded-3xl border border-amber-500/30 bg-slate-900 p-7 sm:p-10 shadow-2xl">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-400/30 bg-amber-400/10 text-amber-300">
+            <LockKeyhole size={32} />
+          </div>
+          <p className="text-center text-xs font-mono uppercase tracking-[0.25em] text-amber-300">Session recovery lock</p>
+          <h1 className="mt-3 text-center text-2xl font-black">Previous inspection session detected</h1>
+          <p className="mt-4 text-sm leading-6 text-slate-300">The application was closed or refreshed while a session was marked active. Setup and master changes remain locked until the station is checked.</p>
+          <div className="mt-5 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100">
+            Confirm that the part has been removed from the jig and the machine is in a safe state before ending the recovered session.
+          </div>
+          <button type="button" onClick={handleEndSession} disabled={pipeline.state !== 'WAITING_FOR_PART'} className="mt-6 w-full rounded-xl bg-amber-400 px-5 py-4 text-sm font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40">CONFIRM SAFE STATE & END SESSION</button>
+          <p className="mt-3 text-center text-[10px] font-mono text-slate-500">If the system is not safe, do not continue.</p>
+        </section>
+      </div>
+    );
+  }
 
   if (entryScreen !== 'app') {
     return (
