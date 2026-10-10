@@ -27,6 +27,7 @@
 | Q-10 | Medium | Master configuration remains station-local; cloud history is separate. A browser/device loss can still risk configuration availability if no approved backup/export exists. | Open architecture risk: define a governed master backup/versioning strategy before multi-station production use. |
 | Q-11 | Medium | CI does not prove the camera stream, visual ROI alignment, reference-image correctness, PLC interlock, or production judgement quality on real hardware. | Open validation requirement: run a documented acceptance test with golden images, NG/OK samples, physical camera and PLC simulator/gateway. |
 | Q-12 | Low | useInspectionPipeline.ts imported runtime identity twice from the same module. | Fixed: consolidated import. |
+| Q-13 | High | An active-session marker was held only in React memory; a refresh could reopen setup while the station had been marked active. | Fixed in the app flow: persist a session marker and show a recovery lock after reload until safe state is confirmed and the recovered session is ended. This is a software guard, not a substitute for a physical PLC safety interlock. |
 
 ## Required acceptance checks before production
 
@@ -35,7 +36,7 @@
 3. Verify each missing prerequisite is shown: live camera, master image and dimensions, 8 valid reference images, 4 anchors, 8 ROIs, valid detection zone, and one-to-one reference mapping.
 4. Confirm a master survives reload and a browser restart; confirm legacy data migration works.
 5. Attempt to start inspection with each prerequisite deliberately invalid; the session must not start.
-6. While inspection is active, verify navigation cannot edit setup; only ending the session permits configuration changes.
+6. While inspection is active, verify navigation cannot edit setup; only ending the session permits configuration changes. Refresh during a session and verify the recovery lock blocks setup until the operator confirms the station is safe.
 7. Test OK, NG, invalid alignment, missing screw, extra object, camera disconnect, PLC timeout, and part-removal latch using approved fixtures.
 8. Deploy to a non-production AWS stack and verify bucket policy, API throttling, size-limit behavior, CloudWatch logs, and S3 result-key uniqueness.
 9. Review CodeQL alerts and dependency audit output before merging.
