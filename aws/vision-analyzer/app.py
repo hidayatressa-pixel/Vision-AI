@@ -10,9 +10,22 @@ import numpy as np
 
 s3 = boto3.client("s3")
 OUTPUT_PREFIX = os.getenv("OUTPUT_PREFIX", "results/")
+MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(8 * 1024 * 1024)))
+
+
+class PayloadTooLargeError(ValueError):
+    pass
+
+
+def _validate_image_size(raw: bytes) -> None:
+    if len(raw) > MAX_IMAGE_BYTES:
+        raise PayloadTooLargeError(f"Image exceeds the {MAX_IMAGE_BYTES}-byte limit")
 
 
 def _decode_image(raw: bytes):
+    _validate_image_size(raw)
+    if not raw:
+        raise ValueError("Image payload is empty")
     array = np.frombuffer(raw, dtype=np.uint8)
     image = cv2.imdecode(array, cv2.IMREAD_COLOR)
     if image is None:
@@ -72,7 +85,12 @@ def _analyze_s3_record(record: dict) -> dict:
     bucket = record["s3"]["bucket"]["name"]
     key = urllib.parse.unquote_plus(record["s3"]["object"]["key"])
     obj = s3.get_object(Bucket=bucket, Key=key)
-    result = analyze_image(obj["Body"].read())
+    declared_size = obj.get("ContentLength")
+    if isinstance(declared_size, int) and declared_size > MAX_IMAGE_BYTES:
+        raise PayloadTooLargeError(f"S3 object exceeds the {MAX_IMAGE_BYTES}-byte limit")
+    raw = obj["Body"].read(MAX_IMAGE_BYTES + 1)
+    _validate_image_size(raw)
+    result = analyze_image(raw)
     result.update({"source": "s3", "bucket": bucket, "key": key})
 
     result_key = f"{OUTPUT_PREFIX.rstrip('/')}/{key.rsplit('/', 1)[-1]}.json"
@@ -122,14 +140,23 @@ def lambda_handler(event, context):
                     "Expected JSON containing an image_base64 field"
                 )
 
+        _validate_image_size(raw)
         result = analyze_image(raw)
         return _response(200, result)
 
-    except Exception as exc:
-        return _response(
-            400,
-            {
-                "error": str(exc),
-                "opencv_version": cv2.__version__,
-            },
-        )
+    except PayloadTooLargeError:
+        return _response(413, {
+            "error": "Image payload exceeds the configured size limit",
+            "max_image_bytes": MAX_IMAGE_BYTES,
+        })
+    except (ValueError, KeyError, json.JSONDecodeError):
+        return _response(400, {
+            "error": "Invalid image request. Provide a valid encoded image in image_base64.",
+            "opencv_version": cv2.__version__,
+        })
+    except Exception:
+        # Do not return exception text, S3 keys, or infrastructure details to callers.
+        return _response(500, {
+            "error": "Image analysis failed",
+            "opencv_version": cv2.__version__,
+        })
