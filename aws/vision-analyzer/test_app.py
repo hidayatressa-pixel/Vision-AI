@@ -43,3 +43,33 @@ def test_api_gateway_demo_path():
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
     assert body["opencv_version"].split(".")[0] == "5"
+
+
+
+def test_api_rejects_oversized_image(monkeypatch):
+    import app
+
+    monkeypatch.setattr(app, "MAX_IMAGE_BYTES", 16)
+    event = {
+        "body": json.dumps({"image_base64": base64.b64encode(make_fixture()).decode("ascii")}),
+        "isBase64Encoded": False,
+    }
+    response = lambda_handler(event, None)
+    assert response["statusCode"] == 413
+    assert "Image payload exceeds" in response["body"]
+
+
+def test_api_does_not_leak_internal_exception_details(monkeypatch):
+    import app
+
+    def explode(_raw):
+        raise RuntimeError("private infrastructure detail")
+
+    monkeypatch.setattr(app, "analyze_image", explode)
+    event = {
+        "body": json.dumps({"image_base64": base64.b64encode(make_fixture()).decode("ascii")}),
+        "isBase64Encoded": False,
+    }
+    response = lambda_handler(event, None)
+    assert response["statusCode"] == 500
+    assert "private infrastructure detail" not in response["body"]
