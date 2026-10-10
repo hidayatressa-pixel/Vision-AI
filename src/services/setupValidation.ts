@@ -9,19 +9,24 @@ export interface SetupValidationCheck {
 
 export function getMasterValidationChecks(revision: MasterRevision): SetupValidationCheck[] {
   const references = revision.referenceImages || [];
+  const anchors = revision.anchors || [];
+  const rois = revision.inspectionROIs || [];
+  const uniqueAnchorIds = new Set(anchors.map((anchor) => anchor.id)).size === anchors.length;
+  const anchorsHaveCoordinates = anchors.every((anchor) => Number.isFinite(anchor.x) && Number.isFinite(anchor.y) && Number.isFinite(anchor.searchRadius) && anchor.searchRadius > 0 && Number.isFinite(anchor.patchRadius) && anchor.patchRadius > 0);
+  const roisHaveValidGeometry = rois.every((roi) => Number.isFinite(roi.x) && Number.isFinite(roi.y) && Number.isFinite(roi.radius) && roi.radius > 0 && Number.isFinite(roi.toleranceRadius) && roi.toleranceRadius >= 0 && Number.isFinite(roi.minConfidence) && roi.minConfidence >= 0 && roi.minConfidence <= 1);
 
   return [
     {
       label: 'Alignment anchors',
-      valid: revision.anchors.length === 4,
-      detail: `${revision.anchors.length}/4 configured`,
-      error: 'Exactly 4 alignment anchors are required.',
+      valid: anchors.length === 4 && uniqueAnchorIds && anchorsHaveCoordinates,
+      detail: `${anchors.length}/4 configured${uniqueAnchorIds ? '' : ' · duplicate IDs'}${anchorsHaveCoordinates ? '' : ' · invalid geometry'}`,
+      error: 'Exactly 4 uniquely identified alignment anchors with valid coordinates and radii are required.',
     },
     {
       label: 'Inspection ROIs',
-      valid: revision.inspectionROIs.length === 8,
-      detail: `${revision.inspectionROIs.length}/8 configured`,
-      error: 'Exactly 8 screw inspection ROIs are required.',
+      valid: rois.length === 8 && roisHaveValidGeometry,
+      detail: `${rois.length}/8 configured${roisHaveValidGeometry ? '' : ' · invalid geometry'}`,
+      error: 'Exactly 8 inspection ROIs with valid coordinates, radii, tolerance, and confidence are required.',
     },
     {
       label: 'Master image',
@@ -47,7 +52,7 @@ export function getMasterValidationChecks(revision: MasterRevision): SetupValida
     },
     {
       label: 'Reference IDs',
-      valid: new Set(references.map((reference) => reference.id)).size === references.length,
+      valid: new Set(references.map((reference) => reference.id)).size === references.length && references.every((reference) => Boolean(reference.id?.trim())),
       detail: new Set(references.map((reference) => reference.id)).size === references.length ? 'Unique' : 'Duplicate IDs',
       error: 'Master reference IDs must be unique.',
     },
