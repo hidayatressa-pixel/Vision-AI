@@ -33,7 +33,7 @@ export default function App() {
   if (isPhoneCameraRoute()) {
     return <PhoneCameraView />;
   }
-  const [entryScreen, setEntryScreen] = useState<'welcome' | 'pin' | 'app'>(() => sessionStorage.getItem('vision-ai-engineering-unlocked') === '1' ? 'app' : 'welcome');
+  const [entryScreen, setEntryScreen] = useState<'welcome' | 'pin' | 'app'>('welcome');
   const [entryPin, setEntryPin] = useState('');
   const [entryPinError, setEntryPinError] = useState('');
   const [activeTab, setActiveTab] = useState<ActiveTab>('CAMERA_SETUP');
@@ -253,7 +253,6 @@ export default function App() {
       setEntryPin('');
       return;
     }
-    sessionStorage.setItem('vision-ai-engineering-unlocked', '1');
     setEntryPin('');
     setEntryPinError('');
     setEntryScreen('app');
