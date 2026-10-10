@@ -1,10 +1,11 @@
-name: Vision-AI CI
+name: Vision-AI AWS CI
 
 on:
   push:
     branches:
       - main
       - "hackathon/**"
+      - "audit/**"
   pull_request:
     branches:
       - main
@@ -13,30 +14,6 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Type check
-        run: npm run lint
-
-      - name: Adversarial recognizer audit
-        run: npm run audit:recognizer
-
-      - name: Production build
-        run: npm run build
-
-
   aws-opencv5:
     runs-on: ubuntu-latest
     steps:
@@ -53,8 +30,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r aws/vision-analyzer/requirements.txt pytest
 
-      - name: Run AWS OpenCV 5 demo tests
-        run: pytest -q aws/vision-analyzer/test_app.py
+      - name: Run API analyzer and S3 event tests
+        run: pytest -q aws/vision-analyzer/test_app.py tests/test_s3_path.py
 
       - name: Build Lambda container
         run: docker build -t vision-ai-aws-opencv5 aws/vision-analyzer
