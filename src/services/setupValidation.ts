@@ -11,7 +11,7 @@ export function getMasterValidationChecks(revision: MasterRevision): SetupValida
   const references = revision.referenceImages || [];
   const anchors = revision.anchors || [];
   const rois = revision.inspectionROIs || [];
-  const uniqueAnchorIds = new Set(anchors.map((anchor) => anchor.id)).size === anchors.length;
+  const uniqueAnchorIds = new Set(anchors.map((anchor) => anchor.id)).size === anchors.length && anchors.every((anchor) => Boolean(anchor.id?.trim()));
   const isNormalizedPoint = (x: number, y: number) =>
     Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1;
   const anchorsHaveCoordinates = anchors.every((anchor) =>
