@@ -303,11 +303,6 @@ export default function App() {
               <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-500">Inspection station</div>
               <h1 className="mt-3 text-3xl sm:text-4xl font-black tracking-tight text-white">Precision in every inspection.</h1>
               <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-400">Quality in every part. Complete the protected setup and verify every prerequisite before starting an inspection session.</p>
-              <div className="my-8 grid grid-cols-3 gap-2 text-left">
-                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="text-[10px] text-slate-500">01</div><div className="mt-1 text-xs font-bold">Camera</div></div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="text-[10px] text-slate-500">02</div><div className="mt-1 text-xs font-bold">Master + 8 refs</div></div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="text-[10px] text-slate-500">03</div><div className="mt-1 text-xs font-bold">ROI alignment</div></div>
-              </div>
               <button onClick={() => setEntryScreen('pin')} className="w-full rounded-xl bg-cyan-400 px-5 py-4 text-sm font-black text-slate-950 transition hover:bg-cyan-300">BEGIN INITIAL SETUP <span aria-hidden="true">→</span></button>
               <p className="mt-4 text-[10px] font-mono text-slate-600">ENGINEERING ACCESS REQUIRED</p>
             </div>
