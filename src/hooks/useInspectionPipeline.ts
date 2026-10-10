@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { soundService } from '../services/audio';
 import { dbService } from '../services/db';
 import { plcService } from '../services/plc/plcService';
-import { getRuntimeIdentity } from '../services/runtimeConfig';
+import { getRuntimeIdentity, getRuntimeIdentity as getVisionRuntimeIdentity } from '../services/runtimeConfig';
 import {
   AlignmentResult,
   ExtraDetectedObject,
@@ -27,7 +27,6 @@ import { PresenceDetector } from '../vision/presenceDetector';
 import { roiInspector } from '../vision/roiInspector';
 import { ruleEngine } from '../vision/ruleEngine';
 import { preprocessInspectionFrame } from '../vision/opencvEngine';
-import { getRuntimeIdentity as getVisionRuntimeIdentity } from '../services/runtimeConfig';
 import { markInspectionLifecycleComplete, sendInspectionResult, sendStandbyEvent } from '../services/visionCloud';
 
 export interface UseInspectionPipelineProps {
