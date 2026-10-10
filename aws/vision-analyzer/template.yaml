@@ -11,6 +11,7 @@ Resources:
   EvidenceBucket:
     Type: AWS::S3::Bucket
     Properties:
+      BucketName: !Sub "vision-ai-evidence-${AWS::AccountId}-${AWS::Region}"
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -29,9 +30,9 @@ Resources:
           OUTPUT_PREFIX: results/
       Policies:
         - S3ReadPolicy:
-            BucketName: !Ref EvidenceBucket
+            BucketName: !Sub "vision-ai-evidence-${AWS::AccountId}-${AWS::Region}"
         - S3WritePolicy:
-            BucketName: !Ref EvidenceBucket
+            BucketName: !Sub "vision-ai-evidence-${AWS::AccountId}-${AWS::Region}"
       Events:
         IncomingImage:
           Type: S3
@@ -53,4 +54,4 @@ Outputs:
   EvidenceBucketName:
     Value: !Ref EvidenceBucket
   VisionAnalyzerApi:
-    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/analyze
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/analyze"

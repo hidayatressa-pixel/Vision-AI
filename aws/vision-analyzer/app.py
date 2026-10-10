@@ -85,6 +85,7 @@ def _analyze_s3_record(record: dict) -> dict:
     return {**result, "result_key": result_key}
 
 
+
 def lambda_handler(event, context):
     # S3 -> Lambda path used by the production/demo evidence flow.
     records = event.get("Records", []) if isinstance(event, dict) else []
@@ -92,22 +93,43 @@ def lambda_handler(event, context):
         results = [_analyze_s3_record(record) for record in records]
         return {"processed": len(results), "results": results}
 
-    # API Gateway path makes the component easy to demonstrate without S3 setup.
-    body = event.get("body", "") if isinstance(event, dict) else ""
-    if event.get("isBase64Encoded"):
-        raw = base64.b64decode(body)
-    else:
-        try:
-            payload = json.loads(body) if isinstance(body, str) else body
-        except json.JSONDecodeError:
-            payload = None
-        if isinstance(payload, dict) and payload.get("image_base64"):
-            raw = base64.b64decode(payload["image_base64"])
-        else:
-            raw = base64.b64decode(body)
-
+    # API Gateway path: accept a Base64 image or JSON containing image_base64.
     try:
+        if not isinstance(event, dict):
+            raise ValueError("Invalid request event")
+
+        body = event.get("body")
+        if not isinstance(body, str) or not body.strip():
+            raise ValueError("Missing image data in request body")
+
+        if event.get("isBase64Encoded"):
+            raw = base64.b64decode(body, validate=True)
+        else:
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                payload = None
+
+            if isinstance(payload, dict):
+                image_base64 = payload.get("image_base64")
+                if not isinstance(image_base64, str) or not image_base64.strip():
+                    raise ValueError(
+                        "Missing required field: image_base64"
+                    )
+                raw = base64.b64decode(image_base64, validate=True)
+            else:
+                raise ValueError(
+                    "Expected JSON containing an image_base64 field"
+                )
+
         result = analyze_image(raw)
         return _response(200, result)
+
     except Exception as exc:
-        return _response(400, {"error": str(exc), "opencv_version": cv2.__version__})
+        return _response(
+            400,
+            {
+                "error": str(exc),
+                "opencv_version": cv2.__version__,
+            },
+        )
