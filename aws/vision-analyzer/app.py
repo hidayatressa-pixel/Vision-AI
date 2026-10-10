@@ -93,7 +93,7 @@ def _analyze_s3_record(record: dict) -> dict:
     result = analyze_image(raw)
     result.update({"source": "s3", "bucket": bucket, "key": key})
 
-    result_key = f"{OUTPUT_PREFIX.rstrip('/')}/{key.rsplit('/', 1)[-1]}.json"
+    result_key = f"{OUTPUT_PREFIX.rstrip('/')}/{key}.json"
     s3.put_object(
         Bucket=bucket,
         Key=result_key,
