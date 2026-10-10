@@ -14,6 +14,22 @@ permissions:
   contents: read
 
 jobs:
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Type-check frontend
+        run: npm run lint
+      - name: Build frontend
+        run: npm run build
+
   aws-opencv5:
     runs-on: ubuntu-latest
     steps:
