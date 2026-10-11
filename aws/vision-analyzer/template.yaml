@@ -47,6 +47,10 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowMethods: "'OPTIONS,POST'"
+        AllowHeaders: "'Content-Type'"
       MethodSettings:
         - ResourcePath: "/*"
           HttpMethod: "*"
