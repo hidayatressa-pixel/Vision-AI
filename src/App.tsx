@@ -11,6 +11,7 @@ import { PLCConfigurationView } from './components/engineer/PLCConfigurationView
 import { InspectionHistoryView } from './components/history/InspectionHistoryView';
 import { DiagnosticsModal } from './components/diagnostics/DiagnosticsModal';
 import { LiveInspectionView } from './components/operator/LiveInspectionView';
+import './components/SystemMessageTicker.css';
 import { SettingsView } from './components/settings/SettingsView';
 import { useCamera } from './hooks/useCamera';
 import { useInspectionPipeline } from './hooks/useInspectionPipeline';
