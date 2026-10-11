@@ -61,6 +61,9 @@ interface LiveInspectionViewProps {
   onOpenHistory: () => void;
   onOpenPlcConfig?: () => void;
   onEndSession?: () => void;
+  onStartSession?: () => void;
+  sessionActive?: boolean;
+  sessionStarting?: boolean;
 }
 
 export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
@@ -94,6 +97,9 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
   onOpenHistory,
   onOpenPlcConfig,
   onEndSession,
+  onStartSession,
+  sessionActive = false,
+  sessionStarting = false,
 }) => {
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -325,7 +331,19 @@ export const LiveInspectionView: React.FC<LiveInspectionViewProps> = ({
             )}
           </div>
 
-          {onEndSession && (
+          {!sessionActive && onStartSession && (
+            <button
+              type="button"
+              onClick={onStartSession}
+              disabled={sessionStarting || cameraState !== 'streaming' || !activeMaster || !activeRevision}
+              className="pointer-events-auto px-3 py-1.5 rounded-lg bg-emerald-400 border border-emerald-300 text-[10px] font-mono font-black text-slate-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Start the inspection session and request AWS session activation"
+            >
+              {sessionStarting ? 'STARTING...' : 'START SESSION'}
+            </button>
+          )}
+
+          {sessionActive && onEndSession && (
             <button
               type="button"
               onClick={onEndSession}
