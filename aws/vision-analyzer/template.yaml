@@ -65,6 +65,7 @@ Resources:
       Environment:
         Variables:
           OUTPUT_PREFIX: results/
+          EVIDENCE_BUCKET: !Ref EvidenceBucket
       Policies:
         - S3ReadPolicy:
             BucketName: !Sub "vision-ai-evidence-${AWS::AccountId}-${AWS::Region}"
