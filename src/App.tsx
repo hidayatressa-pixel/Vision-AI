@@ -280,7 +280,7 @@ export default function App() {
           <div className="mt-5 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100">
             Confirm that the part has been removed from the jig and the machine is in a safe state before ending the recovered session.
           </div>
-          <button type="button" onClick={handleEndSession} disabled={pipeline.state !== 'WAITING_FOR_PART'} className="mt-6 w-full rounded-xl bg-amber-400 px-5 py-4 text-sm font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40">CONFIRM SAFE STATE & END SESSION</button>
+          <button type="button" onClick={() => finalizeEndSession('RECOVERED SESSION ENDED — VERIFY STATION BEFORE RESTARTING', 'warning')} disabled={pipeline.state !== 'WAITING_FOR_PART'} className="mt-6 w-full rounded-xl bg-amber-400 px-5 py-4 text-sm font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40">CONFIRM SAFE STATE & END SESSION</button>
           <p className="mt-3 text-center text-[10px] font-mono text-slate-500">If the system is not safe, do not continue.</p>
         </section>
       </div>
