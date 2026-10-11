@@ -106,3 +106,7 @@ Outputs:
     Value: !Ref EvidenceBucket
   VisionAnalyzerApi:
     Value: !Sub "https://${VisionAnalyzerApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/analyze"
+  VisionConfigurationApi:
+    Value: !Sub "https://${VisionAnalyzerApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/config"
+  VisionSessionLifecycleApi:
+    Value: !Sub "https://${VisionAnalyzerApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/session"
