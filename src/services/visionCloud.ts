@@ -96,3 +96,96 @@ export function sendStandbyEvent(jig: string): void {
 export function markInspectionLifecycleComplete(status: 'OK' | 'NG' | 'INVALID' | 'ERROR'): void {
   lastLifecycleStatus = status;
 }
+
+
+export interface AwsSessionContext {
+  productCode: string;
+  revisionCode: string;
+}
+
+const REQUEST_TIMEOUT_MS = 8000;
+
+async function postJsonWithTimeout(url: string, payload: unknown): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('AWS request timed out after 8 seconds.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Sends an explicit lifecycle event to the currently configured Vision API.
+ * HTTP success confirms that the endpoint accepted the event; it does not
+ * claim that a separate cloud worker is running unless the backend says so.
+ */
+export async function activateAwsSession(context: AwsSessionContext): Promise<void> {
+  const response = await postJsonWithTimeout(VISION_API_URL, {
+    status: 'STANDBY',
+    confidence: 1,
+    mode: 'CONTINUOUS',
+    jig: 'VISION-AI-AWS',
+    timestamp: new Date().toISOString(),
+    productCode: context.productCode,
+    revisionCode: context.revisionCode,
+    reason: 'INSPECTION_SESSION_START_REQUEST',
+  });
+  if (!response.ok) {
+    throw new Error(`AWS session activation event rejected (HTTP ${response.status}).`);
+  }
+}
+
+export async function endAwsSession(context: AwsSessionContext): Promise<void> {
+  const response = await postJsonWithTimeout(VISION_API_URL, {
+    status: 'STANDBY',
+    confidence: 1,
+    mode: 'CONTINUOUS',
+    jig: 'VISION-AI-AWS',
+    timestamp: new Date().toISOString(),
+    productCode: context.productCode,
+    revisionCode: context.revisionCode,
+    reason: 'INSPECTION_SESSION_END_REQUEST',
+  });
+  if (!response.ok) {
+    throw new Error(`AWS session end event rejected (HTTP ${response.status}).`);
+  }
+}
+
+export async function saveConfigurationToAws(configuration: {
+  setupStep: number;
+  camera: { sourceMode: string; selectedDeviceId: string };
+  master: unknown;
+  revision: unknown;
+  savedAt: string;
+}): Promise<void> {
+  const configUrl = String(import.meta.env.VITE_VISION_CONFIG_API_URL || '').trim();
+  if (!configUrl) {
+    throw new Error(
+      'AWS configuration storage is not configured. Set VITE_VISION_CONFIG_API_URL to the deployed configuration API endpoint.'
+    );
+  }
+
+  const response = await postJsonWithTimeout(configUrl, {
+    action: 'SAVE_CONFIGURATION',
+    configuration,
+  });
+  if (!response.ok) {
+    throw new Error(`AWS configuration save failed (HTTP ${response.status}).`);
+  }
+
+  const result = await response.json().catch(() => null) as { saved?: boolean; success?: boolean; message?: string } | null;
+  if (result && (result.saved === false || result.success === false)) {
+    throw new Error(result.message || 'AWS configuration API did not confirm the save.');
+  }
+}
