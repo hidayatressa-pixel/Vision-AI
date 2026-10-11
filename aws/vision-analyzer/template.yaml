@@ -88,6 +88,18 @@ Resources:
             RestApiId: !Ref VisionAnalyzerApi
             Path: /analyze
             Method: post
+        ConfigurationApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref VisionAnalyzerApi
+            Path: /config
+            Method: post
+        SessionLifecycleApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref VisionAnalyzerApi
+            Path: /session
+            Method: post
 
 Outputs:
   EvidenceBucketName:
