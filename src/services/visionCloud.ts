@@ -104,6 +104,7 @@ export interface AwsSessionContext {
 }
 
 const REQUEST_TIMEOUT_MS = 8000;
+const SESSION_API_URL = String(import.meta.env.VITE_VISION_SESSION_API_URL || '').trim();
 
 async function postJsonWithTimeout(url: string, payload: unknown): Promise<Response> {
   const controller = new AbortController();
@@ -131,34 +132,38 @@ async function postJsonWithTimeout(url: string, payload: unknown): Promise<Respo
  * claim that a separate cloud worker is running unless the backend says so.
  */
 export async function activateAwsSession(context: AwsSessionContext): Promise<void> {
-  const response = await postJsonWithTimeout(VISION_API_URL, {
-    status: 'STANDBY',
-    confidence: 1,
-    mode: 'CONTINUOUS',
-    jig: 'VISION-AI-AWS',
+  if (!SESSION_API_URL) {
+    throw new Error('AWS session API is not configured. Set VITE_VISION_SESSION_API_URL to the deployed /Prod/session endpoint.');
+  }
+  const response = await postJsonWithTimeout(SESSION_API_URL, {
+    action: 'START_SESSION',
+    context: { ...context, stationId: 'VISION-AI-AWS' },
     timestamp: new Date().toISOString(),
-    productCode: context.productCode,
-    revisionCode: context.revisionCode,
-    reason: 'INSPECTION_SESSION_START_REQUEST',
   });
   if (!response.ok) {
-    throw new Error(`AWS session activation event rejected (HTTP ${response.status}).`);
+    throw new Error(`AWS session activation request rejected (HTTP ${response.status}).`);
+  }
+  const result = await response.json().catch(() => null) as { accepted?: boolean; success?: boolean; message?: string } | null;
+  if (!result || result.accepted !== true || result.success !== true) {
+    throw new Error(result?.message || 'AWS did not confirm session activation.');
   }
 }
 
 export async function endAwsSession(context: AwsSessionContext): Promise<void> {
-  const response = await postJsonWithTimeout(VISION_API_URL, {
-    status: 'STANDBY',
-    confidence: 1,
-    mode: 'CONTINUOUS',
-    jig: 'VISION-AI-AWS',
+  if (!SESSION_API_URL) {
+    throw new Error('AWS session API is not configured. Set VITE_VISION_SESSION_API_URL to the deployed /Prod/session endpoint.');
+  }
+  const response = await postJsonWithTimeout(SESSION_API_URL, {
+    action: 'END_SESSION',
+    context: { ...context, stationId: 'VISION-AI-AWS' },
     timestamp: new Date().toISOString(),
-    productCode: context.productCode,
-    revisionCode: context.revisionCode,
-    reason: 'INSPECTION_SESSION_END_REQUEST',
   });
   if (!response.ok) {
-    throw new Error(`AWS session end event rejected (HTTP ${response.status}).`);
+    throw new Error(`AWS session end request rejected (HTTP ${response.status}).`);
+  }
+  const result = await response.json().catch(() => null) as { accepted?: boolean; success?: boolean; message?: string } | null;
+  if (!result || result.accepted !== true || result.success !== true) {
+    throw new Error(result?.message || 'AWS did not confirm session end.');
   }
 }
 
