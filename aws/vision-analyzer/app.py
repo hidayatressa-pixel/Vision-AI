@@ -76,7 +76,7 @@ def analyze_image(raw: bytes) -> dict:
 def _response(status: int, body: dict):
     return {
         "statusCode": status,
-        "headers": {"content-type": "application/json"},
+        "headers": {"content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "access-control-allow-methods": "OPTIONS,POST"},
         "body": json.dumps(body),
     }
 
@@ -104,6 +104,44 @@ def _analyze_s3_record(record: dict) -> dict:
 
 
 
+
+def _request_path(event: dict) -> str:
+    resource = event.get("resource")
+    if isinstance(resource, str) and resource:
+        return resource.rstrip("/")
+    path = event.get("path") or event.get("rawPath") or ""
+    return path.rstrip("/") if isinstance(path, str) else ""
+
+
+def _parse_json_body(event: dict) -> dict:
+    body = event.get("body")
+    if not isinstance(body, str) or not body.strip():
+        raise ValueError("Missing JSON request body")
+    if event.get("isBase64Encoded"):
+        body = base64.b64decode(body, validate=True).decode("utf-8")
+    payload = json.loads(body)
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object")
+    return payload
+
+
+def _store_json_document(prefix: str, document: dict, identity: str) -> str:
+    bucket = os.getenv("EVIDENCE_BUCKET", "").strip()
+    if not bucket:
+        raise RuntimeError("EVIDENCE_BUCKET is not configured")
+    safe_identity = "".join(ch for ch in identity if ch.isalnum() or ch in "-_")[:80] or "default"
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    key = f"{prefix.rstrip('/')}/{safe_identity}/{stamp}-{int(time.time() * 1000)}.json"
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=json.dumps(document, separators=(",", ":"), ensure_ascii=False).encode("utf-8"),
+        ContentType="application/json",
+        ServerSideEncryption="AES256",
+    )
+    return key
+
+
 def lambda_handler(event, context):
     # S3 -> Lambda path used by the production/demo evidence flow.
     records = event.get("Records", []) if isinstance(event, dict) else []
@@ -116,29 +154,46 @@ def lambda_handler(event, context):
         if not isinstance(event, dict):
             raise ValueError("Invalid request event")
 
-        body = event.get("body")
-        if not isinstance(body, str) or not body.strip():
-            raise ValueError("Missing image data in request body")
+        request_path = _request_path(event)
+        if request_path.endswith("/config") or request_path == "/config":
+            payload = _parse_json_body(event)
+            if payload.get("action") != "SAVE_CONFIGURATION":
+                raise ValueError("Unsupported configuration action")
+            configuration = payload.get("configuration")
+            if not isinstance(configuration, dict):
+                raise ValueError("Missing configuration object")
+            serialized = json.dumps(configuration, ensure_ascii=False).encode("utf-8")
+            if len(serialized) > 2 * 1024 * 1024:
+                raise PayloadTooLargeError("Configuration exceeds the 2 MiB limit")
+            station_id = str(configuration.get("stationId") or "default")
+            key = _store_json_document("configurations", {
+                "action": "SAVE_CONFIGURATION",
+                "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "configuration": configuration,
+            }, station_id)
+            return _response(200, {"saved": True, "success": True, "key": key})
 
-        if event.get("isBase64Encoded"):
-            raw = base64.b64decode(body, validate=True)
-        else:
-            try:
-                payload = json.loads(body)
-            except json.JSONDecodeError:
-                payload = None
+        if request_path.endswith("/session") or request_path == "/session":
+            payload = _parse_json_body(event)
+            action = payload.get("action")
+            if action not in ("START_SESSION", "END_SESSION"):
+                raise ValueError("Unsupported session action")
+            context_data = payload.get("context") or {}
+            if not isinstance(context_data, dict):
+                raise ValueError("Session context must be a JSON object")
+            station_id = str(context_data.get("stationId") or "default")
+            key = _store_json_document("sessions", {
+                "action": action,
+                "received_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "context": context_data,
+            }, station_id)
+            return _response(200, {"accepted": True, "success": True, "action": action, "key": key})
 
-            if isinstance(payload, dict):
-                image_base64 = payload.get("image_base64")
-                if not isinstance(image_base64, str) or not image_base64.strip():
-                    raise ValueError(
-                        "Missing required field: image_base64"
-                    )
-                raw = base64.b64decode(image_base64, validate=True)
-            else:
-                raise ValueError(
-                    "Expected JSON containing an image_base64 field"
-                )
+        payload = _parse_json_body(event)
+        image_base64 = payload.get("image_base64")
+        if not isinstance(image_base64, str) or not image_base64.strip():
+            raise ValueError("Expected JSON containing an image_base64 field")
+        raw = base64.b64decode(image_base64, validate=True)
 
         _validate_image_size(raw)
         result = analyze_image(raw)

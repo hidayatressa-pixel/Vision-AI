@@ -11,6 +11,7 @@ import { PLCConfigurationView } from './components/engineer/PLCConfigurationView
 import { InspectionHistoryView } from './components/history/InspectionHistoryView';
 import { DiagnosticsModal } from './components/diagnostics/DiagnosticsModal';
 import { LiveInspectionView } from './components/operator/LiveInspectionView';
+import './components/SystemMessageTicker.css';
 import { SettingsView } from './components/settings/SettingsView';
 import { useCamera } from './hooks/useCamera';
 import { useInspectionPipeline } from './hooks/useInspectionPipeline';
@@ -22,6 +23,7 @@ import { CameraSourceMode } from './types/device';
 import { createRemoteCameraSession } from './services/remoteCamera';
 import { PhoneCameraView } from './components/camera/PhoneCameraView';
 import { getMasterValidationChecks } from './services/setupValidation';
+import { activateAwsSession, endAwsSession, saveConfigurationToAws } from './services/visionCloud';
 import { LockKeyhole, ScanLine, ShieldCheck } from 'lucide-react';
 
 function isPhoneCameraRoute() {
@@ -55,6 +57,12 @@ export default function App() {
   const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [setupValidated, setSetupValidated] = useState(false);
   const [setupValidationAttempted, setSetupValidationAttempted] = useState(false);
+  const [systemMessage, setSystemMessage] = useState('SYSTEM READY — COMPLETE SETUP TO BEGIN INSPECTION');
+  const [systemMessageLevel, setSystemMessageLevel] = useState<'info' | 'success' | 'warning' | 'error'>('info');
+  const [sessionStarting, setSessionStarting] = useState(false);
+  const [sessionEnding, setSessionEnding] = useState(false);
+  const [showEndSessionDialog, setShowEndSessionDialog] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const remoteSession = useMemo(() => createRemoteCameraSession(), []);
 
   const cameraOptions = React.useMemo(() => ({ preferredFacingMode: 'environment' as const, preferredResolution: { width: 800, height: 600 } }), []);
@@ -217,19 +225,61 @@ export default function App() {
     setActiveTab('MASTERS');
   };
 
+  const handleContinueToInspection = () => {
+    if (!setupValidated || !cameraReady || !masterReady || sessionActive) {
+      setSystemMessage('SETUP NOT READY — REVIEW CAMERA AND MASTER VALIDATION');
+      setSystemMessageLevel('warning');
+      return;
+    }
+    setSetupStep(5);
+    setActiveTab('INSPECTION');
+    setSystemMessage('SETUP VALIDATED — READY TO START INSPECTION SESSION');
+    setSystemMessageLevel('success');
+  };
+
   const handleStartSession = async () => {
-    if (sessionActive || !setupValidated || !cameraReady || !masterReady) return;
-    const started = await pipeline.startSession();
-    if (started) {
+    if (sessionActive || sessionStarting || !setupValidated || !cameraReady || !masterReady) return;
+    setSessionStarting(true);
+    setSystemMessage('INITIALIZING INSPECTION SESSION...');
+    setSystemMessageLevel('info');
+    try {
+      const started = await pipeline.startSession();
+      if (!started) {
+        setSystemMessage('SESSION START FAILED — CAMERA FRAME OR BASELINE IS NOT READY');
+        setSystemMessageLevel('error');
+        return;
+      }
       setSessionActive(true);
       localStorage.setItem('vision-ai-session-active', '1');
-      setSetupStep(5);
-      setActiveTab('INSPECTION');
+      setSystemMessage('INSPECTION SESSION STARTED — CONNECTING TO AWS...');
+      setSystemMessageLevel('info');
+      void activateAwsSession({
+        productCode: activeMaster?.productCode || 'UNKNOWN',
+        revisionCode: activeRevision?.revisionCode || 'UNKNOWN',
+      }).then(() => {
+        setSystemMessage('AWS SESSION EVENT ACCEPTED — LIVE INSPECTION IS RUNNING');
+        setSystemMessageLevel('success');
+      }).catch((error) => {
+        console.error('[AWS session activation]', error);
+        setSystemMessage('AWS ACTIVATION FAILED — LOCAL INSPECTION IS RUNNING; CLOUD EVENT WAS NOT CONFIRMED');
+        setSystemMessageLevel('warning');
+      });
+    } catch (error) {
+      console.error('[Inspection session start]', error);
+      setSystemMessage('SESSION START FAILED — PLEASE CHECK CAMERA AND TRY AGAIN');
+      setSystemMessageLevel('error');
+    } finally {
+      setSessionStarting(false);
     }
   };
 
-  const handleEndSession = () => {
-    if (pipeline.state !== 'WAITING_FOR_PART') return;
+  const handleEndSessionRequest = () => {
+    if (!sessionActive || pipeline.state !== 'WAITING_FOR_PART' || sessionEnding) return;
+    setSaveError('');
+    setShowEndSessionDialog(true);
+  };
+
+  const finalizeEndSession = (message: string, level: 'success' | 'warning' | 'error' = 'success') => {
     pipeline.resetPipeline();
     setSessionActive(false);
     localStorage.removeItem('vision-ai-session-active');
@@ -238,6 +288,55 @@ export default function App() {
     setSetupValidationAttempted(false);
     setSetupStep(1);
     setActiveTab('CAMERA_SETUP');
+    setShowEndSessionDialog(false);
+    setSystemMessage(message);
+    setSystemMessageLevel(level);
+  };
+
+  const handleEndWithoutSaving = async () => {
+    if (sessionEnding) return;
+    setSessionEnding(true);
+    finalizeEndSession('LIVE INSPECTION ENDED — CONFIGURATION WAS NOT SAVED', 'warning');
+    setSessionEnding(false);
+    void endAwsSession({
+      productCode: activeMaster?.productCode || 'UNKNOWN',
+      revisionCode: activeRevision?.revisionCode || 'UNKNOWN',
+    }).catch((error) => {
+      console.error('[AWS session end]', error);
+      setSystemMessage('LIVE INSPECTION ENDED — AWS END EVENT COULD NOT BE CONFIRMED');
+      setSystemMessageLevel('warning');
+    });
+  };
+
+  const handleSaveAndEndSession = async () => {
+    if (sessionEnding) return;
+    setSessionEnding(true);
+    setSaveError('');
+    setSystemMessage('SAVING CONFIGURATION TO AWS...');
+    setSystemMessageLevel('info');
+    try {
+      await saveConfigurationToAws({
+        setupStep,
+        camera: { sourceMode: cameraSourceMode, selectedDeviceId: camera.selectedDeviceId },
+        master: activeMaster,
+        revision: activeRevision,
+        savedAt: new Date().toISOString(),
+      });
+      finalizeEndSession('CONFIGURATION SAVED — LIVE INSPECTION SESSION ENDED', 'success');
+      void endAwsSession({ productCode: activeMaster?.productCode || 'UNKNOWN', revisionCode: activeRevision?.revisionCode || 'UNKNOWN' }).catch((error) => {
+        console.error('[AWS session end]', error);
+        setSystemMessage('CONFIGURATION SAVE CONFIRMED — AWS END EVENT COULD NOT BE CONFIRMED');
+        setSystemMessageLevel('warning');
+      });
+    } catch (error) {
+      console.error('[AWS configuration save]', error);
+      const message = error instanceof Error ? error.message : 'Unknown cloud storage error';
+      setSaveError(message);
+      setSystemMessage('CONFIGURATION SAVE FAILED — SESSION IS STILL ACTIVE; RETRY OR END WITHOUT SAVING');
+      setSystemMessageLevel('error');
+    } finally {
+      setSessionEnding(false);
+    }
   };
 
   const handlePinUnlock = (event: React.FormEvent<HTMLFormElement>) => {
@@ -280,7 +379,7 @@ export default function App() {
           <div className="mt-5 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100">
             Confirm that the part has been removed from the jig and the machine is in a safe state before ending the recovered session.
           </div>
-          <button type="button" onClick={handleEndSession} disabled={pipeline.state !== 'WAITING_FOR_PART'} className="mt-6 w-full rounded-xl bg-amber-400 px-5 py-4 text-sm font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40">CONFIRM SAFE STATE & END SESSION</button>
+          <button type="button" onClick={() => finalizeEndSession('RECOVERED SESSION ENDED — VERIFY STATION BEFORE RESTARTING', 'warning')} disabled={pipeline.state !== 'WAITING_FOR_PART'} className="mt-6 w-full rounded-xl bg-amber-400 px-5 py-4 text-sm font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40">CONFIRM SAFE STATE & END SESSION</button>
           <p className="mt-3 text-center text-[10px] font-mono text-slate-500">If the system is not safe, do not continue.</p>
         </section>
       </div>
@@ -326,6 +425,10 @@ export default function App() {
   return (
     <div className="min-h-screen rvi-app text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
       <Navbar activeTab={activeTab} setActiveTab={handleNavigate} role={role} setRole={() => undefined} activeMaster={activeMaster} activeRevision={activeRevision} isMuted={isMuted} toggleMute={toggleMute} pendingSyncCount={pendingSyncCount} onSync={handleSync} />
+      <div className={`rvi-system-ticker is-${systemMessageLevel}`} role="status" aria-live="polite">
+        <span className="rvi-system-ticker-label">SYSTEM MESSAGE</span>
+        <div className="rvi-system-ticker-window"><div className="rvi-system-ticker-track"><span>{systemMessage}</span><span aria-hidden="true">{systemMessage}</span></div></div>
+      </div>
       {!sessionActive && <div className="mx-auto flex w-full max-w-[1500px] justify-end px-3 pt-2"><button type="button" onClick={handleEntryLock} className="rounded-lg border border-slate-800 px-3 py-1.5 text-[10px] font-mono text-slate-500 hover:border-amber-400/40 hover:text-amber-300">LOCK ENGINEERING ACCESS</button></div>}
       <main className="rvi-main flex-1 max-w-[1500px] w-full mx-auto p-3 sm:p-5 lg:p-6">
         {setupStep === 1 && (
@@ -444,7 +547,7 @@ export default function App() {
                 <div className="rounded-xl bg-slate-950 p-4"><div className="text-[10px] font-mono text-slate-500">MASTER</div><div className="mt-1 font-bold text-emerald-300">VALID</div></div>
                 <div className="rounded-xl bg-slate-950 p-4"><div className="text-[10px] font-mono text-slate-500">CONFIG</div><div className="mt-1 font-bold text-cyan-300">READY</div></div>
               </div>
-              <button type="button" onClick={handleStartSession} className="w-full rounded-2xl bg-emerald-500 py-4 text-sm font-black text-slate-950 hover:bg-emerald-400">
+              <button type="button" onClick={handleContinueToInspection} className="w-full rounded-2xl bg-emerald-500 py-4 text-sm font-black text-slate-950 hover:bg-emerald-400">
                 START
               </button>
               <button type="button" onClick={handleBackToMasterSetup} className="mt-3 w-full rounded-xl border border-slate-800 py-2.5 text-xs font-bold text-slate-400 hover:text-white">
@@ -455,7 +558,7 @@ export default function App() {
         )}
 
         {setupStep === 5 && activeTab === 'INSPECTION' && (
-          <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} processingFps={processingFps} setProcessingFps={setProcessingFps} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => handleNavigate('SETTINGS')} onEndSession={handleEndSession} />)}
+          <LiveInspectionView videoRef={camera.videoRef} canvasRef={camera.canvasRef} cameraState={camera.cameraState} errorMessage={camera.errorMessage} fps={camera.fps} videoDimensions={camera.videoDimensions} state={pipeline.state} stabilizationProgress={pipeline.stabilizationProgress} motionDelta={pipeline.motionDelta} currentResult={pipeline.currentResult} latestAlignment={pipeline.latestAlignment} latestRoiResults={pipeline.latestRoiResults} latestExtraObjects={pipeline.latestExtraObjects} stats={pipeline.stats} liveMetrics={pipeline.liveMetrics} plcHandshake={pipeline.plcHandshake} plcSignals={pipeline.plcSignals} activeMaster={activeMaster} activeRevision={activeRevision} role={role} processingFps={processingFps} setProcessingFps={setProcessingFps} isVirtualMode={camera.isVirtualMode} virtualScenario={camera.virtualScenario} setVirtualScenario={camera.setVirtualScenario} enableVirtualMode={camera.enableVirtualMode} enablePhysicalCamera={camera.enablePhysicalCamera} onOpenHistory={() => setActiveTab('HISTORY')} onOpenPlcConfig={() => handleNavigate('SETTINGS')} onEndSession={handleEndSessionRequest} onStartSession={handleStartSession} sessionActive={sessionActive} sessionStarting={sessionStarting} />)}
         {setupStep === 5 && activeTab === 'HISTORY' && <InspectionHistoryView onRefreshStats={loadMasters} />}
         {setupStep === 5 && activeTab === 'SETTINGS' && <SettingsView onNavigate={handleNavigate} onClose={() => setActiveTab('INSPECTION')} />}
         {setupStep === 5 && activeTab === 'MASTERS' && <MasterManager masters={masters} activeMaster={activeMaster} activeRevision={activeRevision} onSelectMaster={handleSelectMaster} onRefreshMasters={loadMasters} onOpenSetupModal={handleOpenSetupModal} onCreateNewMaster={handleCreateNewMaster} onBackSetup={handleBackToCameraSetup} onContinueSetup={handleNextMasterSetup} />}
@@ -463,6 +566,22 @@ export default function App() {
         {setupStep === 5 && activeTab === 'DIAGNOSTICS' && <DiagnosticsModal metrics={pipeline.liveMetrics} />}
       </main>
       {setupStep === 2 && isSetupModalOpen && setupMaster && setupRevision && <MasterSetupModal master={setupMaster} revision={setupRevision} isOpen={isSetupModalOpen} onClose={() => setIsSetupModalOpen(false)} onSaved={loadMasters} />}
+      {showEndSessionDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="end-session-title" className="w-full max-w-lg rounded-2xl border border-amber-500/40 bg-slate-950 p-6 shadow-2xl">
+            <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-amber-300">Session control</div>
+            <h2 id="end-session-title" className="mt-2 text-xl font-black text-white">END LIVE INSPECTION</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">Are you sure you want to end Live Inspection? Would you like to save your setup configuration, master configuration, and camera settings to AWS before ending the session?</p>
+            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">The session will end with either choice. Saving is confirmed only after AWS acknowledges the configuration write.</div>
+            {saveError && <div role="alert" className="mt-3 rounded-lg border border-rose-500/40 bg-rose-950/30 p-3 text-xs text-rose-200">SAVE FAILED: {saveError}</div>}
+            <div className="mt-5 grid grid-cols-1 gap-2">
+              <button type="button" onClick={handleSaveAndEndSession} disabled={sessionEnding} className="rounded-xl bg-emerald-400 px-4 py-3 text-xs font-black text-slate-950 hover:bg-emerald-300 disabled:opacity-50">{sessionEnding ? 'SAVING...' : 'SAVE & END SESSION'}</button>
+              <button type="button" onClick={handleEndWithoutSaving} disabled={sessionEnding} className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs font-black text-amber-200 hover:bg-amber-500/20 disabled:opacity-50">END WITHOUT SAVING</button>
+              <button type="button" onClick={() => { setShowEndSessionDialog(false); setSaveError(''); setSystemMessage('LIVE INSPECTION CONTINUES'); setSystemMessageLevel('info'); }} disabled={sessionEnding} className="rounded-xl border border-slate-700 px-4 py-3 text-xs font-bold text-slate-300 hover:bg-slate-900 disabled:opacity-50">CANCEL</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

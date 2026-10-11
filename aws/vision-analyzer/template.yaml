@@ -47,6 +47,10 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowMethods: "'OPTIONS,POST'"
+        AllowHeaders: "'Content-Type'"
       MethodSettings:
         - ResourcePath: "/*"
           HttpMethod: "*"
@@ -65,6 +69,7 @@ Resources:
       Environment:
         Variables:
           OUTPUT_PREFIX: results/
+          EVIDENCE_BUCKET: !Ref EvidenceBucket
       Policies:
         - S3ReadPolicy:
             BucketName: !Sub "vision-ai-evidence-${AWS::AccountId}-${AWS::Region}"
@@ -87,9 +92,25 @@ Resources:
             RestApiId: !Ref VisionAnalyzerApi
             Path: /analyze
             Method: post
+        ConfigurationApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref VisionAnalyzerApi
+            Path: /config
+            Method: post
+        SessionLifecycleApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref VisionAnalyzerApi
+            Path: /session
+            Method: post
 
 Outputs:
   EvidenceBucketName:
     Value: !Ref EvidenceBucket
   VisionAnalyzerApi:
     Value: !Sub "https://${VisionAnalyzerApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/analyze"
+  VisionConfigurationApi:
+    Value: !Sub "https://${VisionAnalyzerApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/config"
+  VisionSessionLifecycleApi:
+    Value: !Sub "https://${VisionAnalyzerApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/session"
